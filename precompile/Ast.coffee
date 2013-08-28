@@ -1,9 +1,36 @@
 fs = require 'fs'
 
+class Enum
+  constructor: (h) ->
+    for own k, v of h
+      @[k] = name: k, id: v
+
 module.exports =
 class Ast
   constructor: ->
     @lines = []
+
+  @node_types: new Enum
+    DECLARATION: 1
+    TYPE: 2
+    ID: 3
+    OPERATOR: 4
+  @declarations: new Enum
+    DEF_TYPE: 1
+    DEF_ID: 2
+  @operators: new Enum
+    COMPARE_EQUAL: 1
+    SET_VALUE: 2
+    SET_ADDRESS: 3
+    SET_ADDRESS_OF: 4
+  @operator_types: new Enum
+    UNARY_LEFT: 1
+    UNARY_RIGHT: 2
+    BINARY_LEFT_RIGHT: 3
+    #BINARY_LEFT_LEFT: ?
+    BINARY_RIGHT_RIGHT: 4
+    TERNARY_RIGHT_RIGHT_RIGHT: 5
+
   open: (file, cb) ->
     fs.readFile file, encoding: 'utf8', flag: 'r', (err, data) =>
       throw err if err
@@ -31,24 +58,43 @@ class Ast
     node = null
     left_node = null
     buffered_word = ''
+    in_string = false
+    remainder_of_line_is_comment = false
     push_word_node = ->
-      if buffered_word
-        node =
-          token: buffered_word
-          line: line
-          char: start_char
-          length: char - (start_char-1)
-          left: left_node
-          right: null
-          type: null
-        if left_node
-          left_node.right = node
-        if node_zero is null
-          node_zero = node
-          left_node = node_zero
-        left_node = node
-        buffered_word = ''
-        start_char = null
+      return unless buffered_word
+
+      node =
+        token: buffered_word
+        line: line
+        char: start_char
+        length: char - (start_char-1)
+        left: left_node
+        right: null
+        node_type: null
+
+      switch buffered_word
+        when 'defType'
+          node.node_type = Ast.node_types.DECLARATION
+          node.declaration = Ast.declarations.DEF_TYPE
+        when 'defId'
+          node.node_type = Ast.node_types.DECLARATION
+          node.declaration = Ast.declarations.DEF_ID
+        when 'Unit'
+          node.node_type = Ast.node_types.TYPE
+        when 'setValue'
+          node.node_type = Ast.node_types.OPERATOR
+          node.operator_type = Ast.operator_types.BINARY_LEFT_RIGHT
+        else 
+          node.node_type = Ast.node_types.ID
+
+      if left_node
+        left_node.right = node
+      if node_zero is null
+        node_zero = node
+        left_node = node_zero
+      left_node = node
+      buffered_word = ''
+      start_char = null
 
     throw_compile_error = (error) ->
       process.stdout.write "Error: #{error}\n  at #{scope} (#{file}:#{line}:#{char})\n\n"
@@ -64,6 +110,7 @@ class Ast
           @lines.push node_zero
           left_node = null
           node_zero = null
+        remainder_of_line_is_comment = false
         line++
         char = spaces = tabs = 0
       else if (c is ' ' and ++spaces) or (c is "\t" and ++tabs) # spacing
@@ -72,8 +119,11 @@ class Ast
           buffered_indent += c
         else
           push_word_node()
+      else if c is '#' and not in_string
+        remainder_of_line_is_comment = true
       else
         char++
+        continue if remainder_of_line_is_comment
         if start_char is null
           start_char = char
         if new_level
@@ -102,11 +152,11 @@ class Ast
     process.stdout.write "\n"
     for line in @lines
       n = line
-      toString = (n) -> "(#{n.type} #{n.token}) "
+      process.stdout.write '( '
+      toString = (n) -> "(#{n.node_type.name} #{n.token}) "
       process.stdout.write toString n
       while n = n.right
         process.stdout.write toString n
-        1
-      process.stdout.write "\n"
+      process.stdout.write " )\n"
 
     #console.log JSON.stringify @node_zero, null, 2
