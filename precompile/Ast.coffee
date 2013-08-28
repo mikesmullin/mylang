@@ -11,11 +11,11 @@ class Ast
     @lines = []
 
   @node_types: new Enum
-    DECLARATION: 1
-    TYPE: 2
-    ID: 3
-    OPERATOR: 4
-    LITERAL: 5
+    DEF: 1
+    ID: 2
+    OPERATOR: 3
+    LITERAL: 4
+    WRAPPER: 5
   @literal_types: new Enum
     NUMBER: 1
     STRING: 2
@@ -24,7 +24,7 @@ class Ast
     INTEGER: 1
     DECIMAL: 2
     HEX: 3
-  @declarations: new Enum
+  @definitions: new Enum
     DEF_TYPE: 1
     DEF_ID: 2
   @operators: new Enum
@@ -39,6 +39,19 @@ class Ast
     #BINARY_LEFT_LEFT: ?
     BINARY_RIGHT_RIGHT: 4
     TERNARY_RIGHT_RIGHT_RIGHT: 5
+  @wrapper_types: new Enum
+    PAREN: 1 # ()
+    BRACK: 2 # []
+    SQUO: 3  # ''
+    DQUO: 4  # ""
+    TSQUO: 5 # '''
+    TDQUO: 6 # """
+    TANG: 7  # <<<'HEREDOC'
+    PUPW: 8  # %W()
+    PLOW: 9  # %w()
+  @wrapper_ends: new Enum
+    HEAD: 1
+    TAIL: 2
 
   open: (file, cb) ->
     fs.readFile file, encoding: 'utf8', flag: 'r', (err, data) =>
@@ -97,17 +110,18 @@ class Ast
         node.number_type = Ast.number_types.HEX
       else switch buffered_word
         when 'defType'
-          node.node_type = Ast.node_types.DECLARATION
-          node.declaration = Ast.declarations.DEF_TYPE
-        when 'defId'
-          node.node_type = Ast.node_types.DECLARATION
-          node.declaration = Ast.declarations.DEF_ID
-        when 'Unit'
-          node.node_type = Ast.node_types.TYPE
-        when 'setValue'
+          node.node_type = Ast.node_types.DEF
+          node.definition = Ast.definitions.DEF_TYPE
+        when 'setUnitEquivalentOf'
           node.node_type = Ast.node_types.OPERATOR
           node.operator_type = Ast.operator_types.BINARY_LEFT_RIGHT
-        else 
+        when 'defId'
+          node.node_type = Ast.node_types.DEF
+          node.definition = Ast.definitions.DEF_ID
+        when 'setLiteral'
+          node.node_type = Ast.node_types.OPERATOR
+          node.operator_type = Ast.operator_types.BINARY_LEFT_RIGHT
+        else
           node.node_type = Ast.node_types.ID
 
       if left_node
@@ -167,6 +181,9 @@ class Ast
           if null isnt c.match /\w/
             buffered_word += c
           else # non-word char
+            # TODO: buffer non-word chars until EOL or another word char is encountered
+            # TODO: support wrapper symbols like () [] "" '' %W() %w() <<< """ '''
+            # TODO: support finding regex between // on the same line
             push_word_node()
 
     return
