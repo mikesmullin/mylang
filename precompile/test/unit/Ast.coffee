@@ -6,7 +6,7 @@ describe 'Ast', ->
   ast = undefined
   fake_file = path.join __dirname, '..', 'fixtures', 'main.m'
 
-  beforeEach ->
+  before ->
     ast = new Ast
 
   it 'can be instantiated', ->
@@ -17,10 +17,11 @@ describe 'Ast', ->
   #  assert.isFunction ast.parse
   #  ast.parse '1'
 
-  it 'can open and parse a file', (done) ->
+  it 'can open and compile a file', (done) ->
     assert.isObject ast
     assert.isFunction ast.open
     ast.open fake_file, ->
       done()
 
-  it 'can pretty print parsed string'
+  it 'can pretty print parsed string', ->
+    ast.pretty_print()
