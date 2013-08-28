@@ -3,7 +3,7 @@ fs = require 'fs'
 module.exports =
 class Ast
   constructor: ->
-    @node_zero = null
+    @lines = []
   open: (file, cb) ->
     fs.readFile file, encoding: 'utf8', flag: 'r', (err, data) =>
       throw err if err
@@ -29,7 +29,7 @@ class Ast
     new_scope = false # on new scope, append to backtrace
     node_zero = null
     node = null
-    prev_node = null
+    left_node = null
     buffered_word = ''
     push_word_node = ->
       if buffered_word
@@ -38,15 +38,15 @@ class Ast
           line: line
           char: start_char
           length: char - (start_char-1)
-          prev: prev_node
-          next: null
+          left: left_node
+          right: null
           type: null
-        if prev_node
-          prev_node.next = node
+        if left_node
+          left_node.right = node
         if node_zero is null
           node_zero = node
-          prev_node = node_zero
-        prev_node = node
+          left_node = node_zero
+        left_node = node
         buffered_word = ''
         start_char = null
 
@@ -59,6 +59,11 @@ class Ast
       if (i<l-1 and c is "\r" and b[i+1] is "\n") or
          c is "\r" or
          c is "\n" # line-break
+        push_word_node()
+        if node_zero isnt null
+          @lines.push node_zero
+          left_node = null
+          node_zero = null
         line++
         char = spaces = tabs = 0
       else if (c is ' ' and ++spaces) or (c is "\t" and ++tabs) # spacing
@@ -91,14 +96,17 @@ class Ast
           else # non-word char
             push_word_node()
 
-    @node_zero = node_zero
     return
 
   pretty_print: ->
-    n = @node_zero
-    toString = (n) -> "(#{n.type} #{n.token}) "
-    process.stdout.write toString n
-    while n = n.next
+    process.stdout.write "\n"
+    for line in @lines
+      n = line
+      toString = (n) -> "(#{n.type} #{n.token}) "
       process.stdout.write toString n
+      while n = n.right
+        process.stdout.write toString n
+        1
+      process.stdout.write "\n"
 
     #console.log JSON.stringify @node_zero, null, 2
