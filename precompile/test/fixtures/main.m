@@ -5,4 +5,4 @@ defType Unit Byte b
 defId Bit a setValue 1b
 defId Bit b setValue 2
 defId c setValue 3b
-defId d setValue 4 # compiler error; must specify a type
+defId d setValue 0x04 # compiler error; must specify a type

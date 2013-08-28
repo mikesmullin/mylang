@@ -15,6 +15,15 @@ class Ast
     TYPE: 2
     ID: 3
     OPERATOR: 4
+    LITERAL: 5
+  @literal_types: new Enum
+    NUMBER: 1
+    STRING: 2
+    REGEX: 3
+  @number_types: new Enum
+    INTEGER: 1
+    DECIMAL: 2
+    HEX: 3
   @declarations: new Enum
     DEF_TYPE: 1
     DEF_ID: 2
@@ -72,7 +81,21 @@ class Ast
         right: null
         node_type: null
 
-      switch buffered_word
+      if null isnt (m = buffered_word.match /^(\d+)(\w)?$/)
+        node.node_type = Ast.node_types.LITERAL
+        node.literal_type = Ast.literal_types.NUMBER
+        node.number_type = Ast.number_types.INTEGER
+        if m[3] then node.number_unit_symbol = m[3]
+      else if null isnt (m = buffered_word.match /^(\d*).(\d+)(\w)?$/)
+        node.node_type = Ast.node_types.LITERAL
+        node.literal_type = Ast.literal_types.NUMBER
+        node.number_type = Ast.number_types.DECIMAL
+        if m[4] then node.number_unit_symbol = m[3]
+      else if null isnt buffered_word.match /^0x[0-9a-fA-F]+$/
+        node.node_type = Ast.node_types.LITERAL
+        node.literal_type = Ast.literal_types.NUMBER
+        node.number_type = Ast.number_types.HEX
+      else switch buffered_word
         when 'defType'
           node.node_type = Ast.node_types.DECLARATION
           node.declaration = Ast.declarations.DEF_TYPE
