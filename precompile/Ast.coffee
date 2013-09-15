@@ -3,22 +3,16 @@ fs = require 'fs'
 class Enum
   constructor: (a) ->
     for v, i in a
-      @[v] = id: i+1, name: v, toString: -> @name
-  #equals: (v) ->
-  #  if typeof v is 'number'
-  #    return @id is v
-  #  else if typeof v is 'object'
-  #    return @id is v.id and @toString() is v.toString()
-  #  return false
+      @[v] = enum: v
 
 # ascii-based characters
 CHAR =
   SPACE: ' ', TAB: "\t", CR: "\r", LF: "\n", EXCLAIMATION: '!', DOUBLE_QUOTE: '"',
-  SINGLE_QUOTE: "'", POUND: '#', DOLLAR: '$', PERCENT: '%', AMPERSAND: '&', 
+  SINGLE_QUOTE: "'", POUND: '#', DOLLAR: '$', PERCENT: '%', AMPERSAND: '&',
   OPEN_PARENTHESIS: '(', CLOSE_PARENTHESIS: ')', ASTERISK: '*', PLUS: '+', 
-  COMMA: ',', HYPHEN: '-', PERIOD: '.', SLASH: '/', COLON: ':', SEMICOLON: ';', 
+  COMMA: ',', HYPHEN: '-', PERIOD: '.', SLASH: '/', COLON: ':', SEMICOLON: ';',
   LESS: '<', EQUAL: '=', GREATER: '>', QUESTION: '?', AT: '@', OPEN_BRACKET: '[',
-  CLOSE_BRACKET: ']', BACKSLASH: "\\", CARET: '^', UNDERSCORE: '_', GRAVE: '`', 
+  CLOSE_BRACKET: ']', BACKSLASH: "\\", CARET: '^', UNDERSCORE: '_', GRAVE: '`',
   OPEN_BRACE: '{', CLOSE_BRACE: '}', BAR: '|', TILDE: '~'
 
 INDENT = new Enum ['SPACE', 'TAB', 'MIXED']
