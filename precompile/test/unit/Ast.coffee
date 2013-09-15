@@ -4,7 +4,7 @@ path = require 'path'
 
 describe 'Ast', ->
   ast = undefined
-  fake_file = path.join __dirname, '..', 'fixtures', 'main.m'
+  fake_file = path.join __dirname, '..', 'fixtures', 'AccountExtension.java'
 
   before ->
     ast = new Ast
