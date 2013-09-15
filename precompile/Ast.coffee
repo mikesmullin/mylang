@@ -65,18 +65,19 @@ class Ast # Parser
     tree   = @syntaxer tokens # create Abstract Syntax Tree (AST)
 
   lexer: (buf) -> # (String): TOKEN[]
-    len   = buf.length # number
-    char  = 1
+    len = buf.length # number
+    char = 1
+    line = 1
     zchar = -1 # zero-indexed
     level = 0
-    line  = 1
+    tokens = []
+    word_buf = ''
+    space_buf = ''
+    indent_buf = ''
     symbol_array = []
     word_on_this_line = false
-    space_buf = ''
-    word_buf = ''
-    indent_buf = ''
     indent_type_this_line = undefined
-    tokens = []
+
     push_symbol = (chars, symbol, meta={}) -> # (String, SYMBOL): void
       meta.line = line; meta.char = char
       symbol_array.push new Symbol chars, [symbol], meta
@@ -96,33 +97,20 @@ class Ast # Parser
       return
     slice_space_buf = -> # (void): void
       if indent_buf.length
-        push_symbol indent_buf, SYMBOL.INDENT
+        push_symbol indent_buf, SYMBOL.INDENT, indent_type: indent_type_this_line
         indent_buf = ''
       else if space_buf.length
         push_symbol space_buf, SYMBOL.SPACE
         word_buf = ''
       return
-    lookahead = (n) -> buf[zchar+n] # (int): void
+
+    peekahead = (n) -> buf[zchar+n] # (int): void
     while ++zchar < len # iterate every character in buffer
       c = buf[zchar]
       char = zchar + 1
 
-###
-ok, so, the job of the lexer is to establish rules about
-document format, line breaks, indentation
-and to build a basic table of those types of common symbols
-shared by all languages
-incl. line, char, and level positioning of symbols
-in some languages, indentation is ignored, but it should
-still be measured while we're looping here
-because multiple languages can share the same lexer
-so the information it should gather about the indentation should be:
-  exact string (which you can also get .length of)
-  whether its SPACES, TABS, or MIXED
-###
-
-      # count win/mac/unix line-breaks
-      if c is CHAR.CR and lookahead(1) is CHAR.LF # windows
+      # slice on win/mac/unix line-breaks
+      if c is CHAR.CR and peekahead(1) is CHAR.LF # windows
         slice_line_buf 2
         continue
       else if c is CHAR.CR or c is CHAR.LF # mac or linux
@@ -130,7 +118,7 @@ so the information it should gather about the indentation should be:
         continue
       else
 
-      # count indentation
+      # slice on whitespace
       if c is CHAR.SPACE or c is CHAR.TAB # whitespace
         slice_word_buf()
         if word_on_this_line # spacing
@@ -143,11 +131,14 @@ so the information it should gather about the indentation should be:
             indent_type_this_line ||= if indent_type_this_line is INDENT.SPACE then INDENT.MIXED else INDENT.TAB
           indent_buf += c
         continue
-      else # word
+      else # non-space
         slice_space_buf()
         word_buf += c
         continue
 
+    slice_space_buf()
+    slice_word_buf()
+    slice_line_buf()
     return tokens
 
   # TODO: call this symbolizer; groups one or more tokens into symbols
