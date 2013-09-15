@@ -1,11 +1,15 @@
 fs = require 'fs'
 
 class Enum
-  #constructor: (h) ->
-  #  for own k, v of h
-  #    @[k] = name: k, id: v
   constructor: (a) ->
-    @[v] = i+1 for v, i in a
+    for v, i in a
+      @[v] = id: i+1, name: v, toString: -> @name
+  #equals: (v) ->
+  #  if typeof v is 'number'
+  #    return @id is v
+  #  else if typeof v is 'object'
+  #    return @id is v.id and @toString() is v.toString()
+  #  return false
 
 # ascii-based characters
 CHAR =
@@ -17,7 +21,7 @@ CHAR =
   CLOSE_BRACKET: ']', BACKSLASH: "\\", CARET: '^', UNDERSCORE: '_', GRAVE: '`', 
   OPEN_BRACE: '{', CLOSE_BRACE: '}', BAR: '|', TILDE: '~'
 
-INDENT = new Enum 'SPACE', 'TAB', 'MIXED'
+INDENT = new Enum ['SPACE', 'TAB', 'MIXED']
 
 # a symbol represents a group of one or more neighboring characters
 class Symbol
@@ -59,7 +63,7 @@ class Ast # Parser
   compile: (file, buf) ->
     symbol_array = @lexer buf # distinguish lines, indentation, spacing, and words/non-spacing
     symbol_array = @symbolizer symbol_array # distinguish keywords, operators, identifiers in source language
-    tree = @syntaxer tokens # create Abstract Syntax Tree (AST)
+    tree = @syntaxer symbol_array # create Abstract Syntax Tree (AST)
 
   lexer: (buf) ->
     len = buf.length # number
@@ -67,7 +71,6 @@ class Ast # Parser
     line = 1
     zchar = -1 # zero-indexed
     level = 0
-    tokens = []
     word_buf = ''
     space_buf = ''
     indent_buf = ''
@@ -139,7 +142,9 @@ class Ast # Parser
     return symbol_array
 
   # group one or more characters into symbols
+  # also index possible pairs
   symbolizer: (symbol_array) ->
+    console.log JSON.stringify symbol_array.slice(0, 10)
     #pairables = [
     #  type: SQUARE_BRACKET.OPEN, line: 1, char: 2, token: TOKEN
     #  type: SQUARE_BRACKET.CLOSE, line: 2, char: 33, token: TOKEN
@@ -149,12 +154,12 @@ class Ast # Parser
     #    2: token
     #  2:
     #    33: token
-    #for own token in tokens
+    #for own symbol in symbol_array
     #  switch token.char
     #    when ' '
     return symbol_array
 
-  syntaxer: (tokens) ->
+  syntaxer: (symbol_array) ->
     return {}
 
   pretty_print: ->
