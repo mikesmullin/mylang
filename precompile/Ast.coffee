@@ -10,9 +10,11 @@ class Enum
 
 # a token represents a character
 class Token
-  constructor: (@character, @types, options={}) -> # (Char, TOKEN[], Object?): void
-    @[k] = v for own k, v of options
+  constructor: (@character, @type, meta={}) -> # (Char, TOKEN, Object?): void
+    @[k] = v for own k, v of meta
     return
+  typeof: (@type) -> @type.id is @type.id # (TOKEN): boolean
+
 # token types shared among all ASCII-based programming languages
 TOKEN = new Enum
   'SPACE','TAB','CR','LF','EXCLAMATION','DOUBLE_QUOTE','SINGLE_QUOTE',
@@ -24,8 +26,8 @@ TOKEN = new Enum
 
 # a symbol represents a group of one or more neighboring characters
 class Symbol
-  constructor: (@tokens, @types, options={}) -> # (TOKEN[], SYMBOL[], Object?): void
-    @[k] = v for own k, v of options
+  constructor: (@tokens, @types, meta={}) -> # (TOKEN[], SYMBOL[], Object?): void
+    @[k] = v for own k, v of meta
     return
 # in our system, symbols are like tags; a node can have multiple of them
 # but only a few make sense together
@@ -72,12 +74,12 @@ class Ast # Parser
     zchar = -1 # zero-indexed
     level = 0
     line  = 1
-    lines = []
-    line_buf = ''
+    #lines = []
+    #line_buf = ''
     slice_line_buf = (divider_char_size) -> # (int): void
-      lines.push line_buf
+      #lines.push line_buf
       line++
-      line_buf = ''
+      #line_buf = ''
       zchar += divider_char_size
       return
     space_buf = ''
@@ -96,11 +98,59 @@ class Ast # Parser
         push_token space_buf, TOKEN.SPACE
         word_buf = ''
       return
-
+    lookahead = (n) -> buf[zchar+n] # (int): void
     while ++zchar < len # iterate every character in buffer
       c = buf[zchar]
       char = zchar + 1
-      # split by win/mac/unix line-breaks
+
+      # TODO: cannot count lines at this stage until we have converted
+      # all characters to tokens
+      # understanding line breaks comes at the symbol stage
+      # but understanding symbols depends on understanding neighbors
+      # so we have to tokenize first
+
+      token_type = switch c
+        when ' '  then TOKEN.SPACE
+        when "\t" then TOKEN.TAB
+        when "\r" then TOKEN.CR
+        when "\n" then TOKEN.LF
+        when '!'  then TOKEN.EXCLAIMATION
+        when '"'  then TOKEN.DOUBLE_QUOTE
+        when "'"  then TOKEN.SINGLE_QUOTE
+        when '#'  then TOKEN.POUND
+        when '$'  then TOKEN.DOLLAR
+        when '%'  then TOKEN.PERCENT
+        when '&'  then TOKEN.AMPERSAND
+        when '('  then TOKEN.OPEN_PARENTHESIS
+        when ')'  then TOKEN.CLOSE_PARENTHESIS
+        when '*'  then TOKEN.ASTERISK
+        when '+'  then TOKEN.PLUS
+        when ','  then TOKEN.COMMA
+        when '-'  then TOKEN.HYPHEN
+        when '.'  then TOKEN.PERIOD
+        when '/'  then TOKEN.SLASH
+        when ':'  then TOKEN.COLON
+        when ';'  then TOKEN.SEMICOLON
+        when '<'  then TOKEN.LESS
+        when '='  then TOKEN.EQUAL
+        when '>'  then TOKEN.GREATER
+        when '?'  then TOKEN.QUESTION
+        when '@'  then TOKEN.AT
+        when '['  then TOKEN.OPEN_BRACKET
+        when ']'  then TOKEN.CLOSE_BRACKET
+        when "\\" then TOKEN.BACKSLASH
+        when '^'  then TOKEN.CARET
+        when '_'  then TOKEN.UNDERSCORE
+        when '`'  then TOKEN.GRAVE
+        when '{'  then TOKEN.OPEN_BRACE
+        when '}'  then TOKEN.CLOSE_BRACE
+        when '|'  then TOKEN.BAR
+        when '~'  then TOKEN.TILDE
+
+      t = new Token c, token_type, char: char
+      token_type = null
+
+      # count win/mac/unix line-breaks
       if c is "\r" and buf[zchar+1] is "\n" # windows
         slice_line_buf 1
         continue
@@ -108,7 +158,7 @@ class Ast # Parser
         slice_line_buf 0
         continue
       else
-        line_buf += c
+        #line_buf += c
 
       # split by token boundaries
       new Token
@@ -173,3 +223,4 @@ class Ast # Parser
       while n = n.right
         process.stdout.write toString n
       process.stdout.write " )\n"
+
