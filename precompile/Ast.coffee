@@ -20,9 +20,12 @@ class Symbol
   constructor: (@chars, @types, meta={}) -> # (TOKEN[], SYMBOL[], Object?): void
     @[k] = v for own k, v of meta
     return
+  hasType: (type) ->
+    return true for _type in @types when  _type is type
+    return false
 # in our system, symbols are like tags; a node can have multiple of them
 # but only a few make sense together
-SYMBOL = new Enum ['LINEBREAK','INDENT','SPACE','NONSPACE','KEYWORD','LETTER',
+SYMBOL = new Enum ['LINEBREAK','INDENT','SPACE','WORD','NONWORD','KEYWORD','LETTER',
   'IDENTIFIER','OPERATOR',
   'LITERAL','STRING','NUMBER','INTEGER','DECIMAL','HEX','REGEX','PUNCTUATION',
   'QUOTE','PARENTHESIS','BRACKET','BRACE','PAIR','OPEN','CLOSE',
@@ -54,7 +57,7 @@ class Ast # Parser
 
   compile: (file, buf) ->
     symbol_array = @lexer buf # distinguish lines, indentation, spacing, and words/non-spacing
-    symbol_array = @symbolizer symbol_array # distinguish keywords, operators, identifiers in source language
+    symbol_array = @java_symbolizer symbol_array # distinguish keywords, operators, identifiers in source language
     tree = @syntaxer symbol_array # create Abstract Syntax Tree (AST)
 
   lexer: (buf) ->
@@ -68,6 +71,7 @@ class Ast # Parser
     word_buf = ''
     space_buf = ''
     indent_buf = ''
+    nonword_buf = ''
     symbol_array = []
     word_on_this_line = false
     indent_type_this_line = undefined
@@ -78,9 +82,15 @@ class Ast # Parser
       return
     slice_word_buf = ->
       if word_buf.length
-        push_symbol word_buf, SYMBOL.NONSPACE
+        push_symbol word_buf, SYMBOL.WORD
         word_on_this_line ||= true
         word_buf = ''
+      return
+    slice_nonword_buf = ->
+      if nonword_buf.length
+        push_symbol nonword_buf, SYMBOL.NONWORD
+        word_on_this_line ||= true
+        nonword_buf = ''
       return
     slice_space_buf = ->
       if indent_buf.length
@@ -92,6 +102,7 @@ class Ast # Parser
       return
     slice_line_buf = (num_chars) ->
       slice_space_buf()
+      slice_nonword_buf()
       slice_word_buf()
       push_symbol buf.substr(zbyte,num_chars), SYMBOL.LINEBREAK
       line++
@@ -115,6 +126,7 @@ class Ast # Parser
 
       # slice on whitespace
       else if c is CHAR.SPACE or c is CHAR.TAB # whitespace
+        slice_nonword_buf()
         slice_word_buf()
         if word_on_this_line # spacing
           # spacing inbetween characters doesn't usually matter so we won't count it
@@ -125,18 +137,23 @@ class Ast # Parser
           else if c is CHAR.TAB
             indent_type_this_line ||= if indent_type_this_line is INDENT.SPACE then INDENT.MIXED else INDENT.TAB
           indent_buf += c
-      else # word/non-space
+      else
         slice_space_buf()
-        word_buf += c
+        if c.match /\w/ # word character
+          slice_nonword_buf()
+          word_buf += c
+        else # non-word character
+          slice_word_buf()
+          nonword_buf += c
 
     slice_line_buf()
     return symbol_array
 
   # group one or more characters into symbols
   # also index possible pairs
-  symbolizer: (symbol_array) ->
-    @pretty_print symbol_array
-    #console.log JSON.stringify symbol_array.slice(0, 10)
+  java_symbolizer: (symbol_array) ->
+    @pretty_print_symbol_array symbol_array
+
     #pairables = [
     #  type: SQUARE_BRACKET.OPEN, line: 1, char: 2, token: TOKEN
     #  type: SQUARE_BRACKET.CLOSE, line: 2, char: 33, token: TOKEN
@@ -146,15 +163,19 @@ class Ast # Parser
     #    2: token
     #  2:
     #    33: token
-    #for own symbol in symbol_array
-    #  switch token.char
-    #    when ' '
+    for symbol in symbol_array
+      if symbol.hasType SYMBOL.NONSPACE
+        #console.log symbol.chars
+        1
     return symbol_array
 
   syntaxer: (symbol_array) ->
     return {}
 
-  pretty_print: (symbol_array) ->
+  pretty_print: ->
+    return
+
+  pretty_print_symbol_array: (symbol_array) ->
     process.stdout.write "\n"
     last_line = 1
     process.stdout.write '( '
