@@ -25,13 +25,13 @@ class Symbol
     return
 # in our system, symbols are like tags; a node can have multiple of them
 # but only a few make sense together
-SYMBOL = new Enum
-  'CRLF','WORD','KEYWORD','LETTER','IDENTIFIER','OPERATOR','LITERAL',
-  'STRING','NUMBER','INTEGER','DECIMAL','HEX','REGEX','PUNCTUATION',
+SYMBOL =
+  'LINEBREAK','INDENT','WORD','KEYWORD','LETTER','IDENTIFIER','OPERATOR',
+  'LITERAL','STRING','NUMBER','INTEGER','DECIMAL','HEX','REGEX','PUNCTUATION',
   'QUOTE','PARENTHESIS','BRACKET','BRACE','PAIR','OPEN','CLOSE',
   'COMMENT','LINE_COMMENT','MULTILINE_COMMENT','OPEN_MULTILINE_COMMENT',
   'CLOSE_MULTILINE_COMMENT','OPEN_MULTILINE_STRING',
-  'CLOSE_MULTILINE_STRING','OPEN_LEVEL','CLOSE_LEVEL','OPEN_STRING',
+  'CLOSE_MULTILINE_STRING','INC_LEVEL','DEC_LEVEL','OPEN_STRING',
   'CLOSE_STRING','OPEN_MULTILINE','CLOSE_MULTILINE'
 
 # syntax
@@ -70,11 +70,12 @@ class Ast # Parser
     line  = 1
     #lines = []
     #line_buf = ''
-    slice_line_buf = (divider_char_size) -> # (int): void
+    slice_line_buf = (chars, symbol) -> # (int, SYMBOL): void
+      push_symbol
       #lines.push line_buf
       line++
       #line_buf = ''
-      zchar += divider_char_size
+      zchar += chars-1
       return
     space_buf = ''
     word_buf = ''
@@ -97,25 +98,29 @@ class Ast # Parser
       c = buf[zchar]
       char = zchar + 1
 
+###
+ok, so, the job of the lexer is to establish rules about
+document format, line breaks, indentation
+and to build a basic table of those types of common symbols
+shared by all languages
+incl. line, char, and level positioning of symbols
+in some languages, indentation is ignored, but it should
+still be measured while we're looping here
+because multiple languages can share the same lexer
+###
+
       # count win/mac/unix line-breaks
       if c is CHAR.CR and lookahead(1) is CHAR.LF # windows
-        slice_line_buf 1
+        slice_line_buf 2
         continue
-      else if c is "\r" or c is "\n" # mac or linux
-        slice_line_buf 0
+      else if c is CHAR.CR or c is CHAR.LF # mac or linux
+        slice_line_buf 1
         continue
       else
         #line_buf += c
 
-      # split by token boundaries
-      new Token
-
-
-      switch c
-        when ' ' then
-        when "\t"
-      if c is ' ' or c is "\t" # spacing
-        slice_word_buf() # TODO: designate token types here
+      if c is CHAR.SPACE or c is CHAR.TAB # spacing
+        slice_word_buf()
         space_buf += c
         continue
       else # word
