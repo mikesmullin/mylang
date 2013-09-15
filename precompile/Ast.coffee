@@ -1,23 +1,59 @@
 fs = require 'fs'
 
 class Enum
-  constructor: (h) ->
-    for own k, v of h
-      @[k] = name: k, id: v
+  #constructor: (h) ->
+  #  for own k, v of h
+  #    @[k] = name: k, id: v
+  constructor: (a) ->
+    for v, i in a
+      @[i] = name: i, id: v
 
-TOKEN = new Enum
-  WORD: 1
-  SPACE: 2
-
+# a token represents a character
 class Token
-  constructor: (@token, @types, options={}) -> # (String, TOKEN[], Object?): void
+  constructor: (@character, @types, options={}) -> # (Char, TOKEN[], Object?): void
     @[k] = v for own k, v of options
     return
+# token types shared among all ASCII-based programming languages
+TOKEN = new Enum
+  'SPACE','TAB','CR','LF','EXCLAMATION','DOUBLE_QUOTE','SINGLE_QUOTE',
+  'POUND','DOLLAR','PERCENT','AMPERSAND', 'OPEN_PARENTHESIS',
+  'CLOSE_PARENTHESIS','ASTERISK','PLUS','COMMA', 'HYPHEN','PERIOD',
+  'SLASH','COLON','SEMICOLON','LESS','EQUAL','GREATER','QUESTION','AT',
+  'OPEN_BRACKET','CLOSE_BRACKET','BACKSLASH','CARET','UNDERSCORE',
+  'GRAVE','OPEN_BRACE','CLOSE_BRACE','BAR','TILDE'
+
+# a symbol represents a group of one or more neighboring characters
+class Symbol
+  constructor: (@tokens, @types, options={}) -> # (TOKEN[], SYMBOL[], Object?): void
+    @[k] = v for own k, v of options
+    return
+# in our system, symbols are like tags; a node can have multiple of them
+# but only a few make sense together
+SYMBOL = new Enum
+  'CRLF','WORD','KEYWORD','LETTER','IDENTIFIER','OPERATOR','LITERAL',
+  'STRING','NUMBER','INTEGER','DECIMAL','HEX','REGEX','PUNCTUATION',
+  'QUOTE','PARENTHESIS','BRACKET','BRACE','PAIR','OPEN','CLOSE',
+  'COMMENT','LINE_COMMENT','MULTILINE_COMMENT','OPEN_MULTILINE_COMMENT',
+  'CLOSE_MULTILINE_COMMENT','OPEN_MULTILINE_STRING',
+  'CLOSE_MULTILINE_STRING','OPEN_LEVEL','CLOSE_LEVEL','OPEN_STRING',
+  'CLOSE_STRING','OPEN_MULTILINE','CLOSE_MULTILINE'
+
+# syntax
+SYNTAX =
+  JAVA: # proprietary to java
+    KEYWORDS:
+      'abstract','assert','boolean','break','byte','case','catch',
+      'char','class','const','continue','default','do','double','else',
+      'enum','extends','finally','float','for','goto','if','implements',
+      'import','instanceof','int','interface','long','native','new',
+      'package','private','protected','public','return','short','static',
+      'strictfp','super','switch','synchronized','this','throw','throws',
+      'transient','try','void','volatile','while'
+    LITERALS: 'false','null','true'
 
 module.exports =
-class Ast
+class Ast # Parser
   constructor: ->
-
   open: (file, cb) ->
     fs.readFile file, encoding: 'utf8', flag: 'r', (err, data) =>
       throw err if err
@@ -26,6 +62,11 @@ class Ast
     return
 
   compile: (file, buf) -> # public (String, String): void
+    tokens = @lexer buf # distinguish lines, space, and words
+    tokens = @tokenizer tokens # distinguish keywords, operators, identifiers
+    tree   = @syntaxer tokens # create Abstract Syntax Tree (AST)
+
+  lexer: (buf) -> # (String): TOKEN[]
     len   = buf.length # number
     char  = 1
     zchar = -1 # zero-indexed
@@ -70,8 +111,14 @@ class Ast
         line_buf += c
 
       # split by token boundaries
+      new Token
+
+
+      switch c
+        when ' ' then 
+        when "\t"
       if c is ' ' or c is "\t" # spacing
-        slice_word_buf()
+        slice_word_buf() # TODO: designate token types here
         space_buf += c
         continue
       else # word
@@ -79,9 +126,29 @@ class Ast
         word_buf += c
         continue
 
-    console.log tokens[0]
+    return tokens
+
+  # TODO: call this symbolizer; groups one or more tokens into symbols
+  tokenizer: (tokens) -> # (TOKEN[]): TOKEN[]
+
+    pairables = [
+      type: SQUARE_BRACKET.OPEN, line: 1, char: 2, token: TOKEN
+      type: SQUARE_BRACKET.CLOSE, line: 2, char: 33, token: TOKEN
+    ]
+    pairables_by_xy =
+      1:
+        2: token
+      2:
+        33: token
+    for own token in tokens
+      switch token.char
+        when ' '
 
 
+    return tokens
+
+  syntaxer: (tokens) -> # (TOKEN[]): SyntaxTree
+    return {}
 
 
 
