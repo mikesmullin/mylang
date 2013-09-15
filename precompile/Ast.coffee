@@ -24,7 +24,7 @@ class Symbol
     return
 # in our system, symbols are like tags; a node can have multiple of them
 # but only a few make sense together
-SYMBOL = new Enum ['LINEBREAK','INDENT','NONSPACE','KEYWORD','LETTER',
+SYMBOL = new Enum ['LINEBREAK','INDENT','SPACE','NONSPACE','KEYWORD','LETTER',
   'IDENTIFIER','OPERATOR',
   'LITERAL','STRING','NUMBER','INTEGER','DECIMAL','HEX','REGEX','PUNCTUATION',
   'QUOTE','PARENTHESIS','BRACKET','BRACE','PAIR','OPEN','CLOSE',
@@ -62,10 +62,11 @@ class Ast # Parser
   lexer: (buf) ->
     c = ''
     len = buf.length # number
-    char = 1
+    byte = 1 # buffer cursor
+    char = 0 # starts at one, resets with new lines
     line = 1
-    zchar = -1 # zero-indexed
     level = 0
+    zbyte = -1 # zero-indexed
     word_buf = ''
     space_buf = ''
     indent_buf = ''
@@ -74,7 +75,7 @@ class Ast # Parser
     indent_type_this_line = undefined
 
     push_symbol = (chars, symbol, meta={}) ->
-      meta.line = line; meta.char = char - chars.length
+      meta.line = line; meta.char = char - chars.length; meta.byte = byte - chars.length
       symbol_array.push new Symbol chars, [symbol], meta
       return
     slice_word_buf = ->
@@ -94,25 +95,27 @@ class Ast # Parser
     slice_line_buf = (num_chars) ->
       slice_space_buf()
       slice_word_buf()
-      push_symbol buf.substr(c,num_chars), SYMBOL.LINEBREAK
+      push_symbol buf.substr(zbyte,num_chars), SYMBOL.LINEBREAK
       line++
-      zchar += num_chars-1
+      char = 0
+      zbyte += num_chars-1
       word_on_this_line = false
       indent_type_this_line = undefined
       return
 
-    peekahead = (n) -> buf[zchar+n]
-    while ++zchar < len # iterate every character in buffer
-      console.log c: c, char: char, symbol_array: JSON.stringify symbol_array
-      c = buf[zchar]
-      char = zchar + 1
-      if zchar > 20 then process.exit 0
+    peekahead = (n) -> buf[zbyte+n]
+    while ++zbyte < len # iterate every character in buffer
+      #unless char is 0
+      #  console.log c: c, byte: byte, symbol_array: JSON.stringify symbol_array
+      c = buf[zbyte]
+      byte = zbyte + 1
+      ++char
+      #if zbyte > 20 then process.exit 0
 
       # slice on win/mac/unix line-breaks
       if c is CHAR.CR and peekahead(1) is CHAR.LF # windows
         slice_line_buf 2
       else if c is CHAR.CR or c is CHAR.LF # mac or linux
-        console.log 'I DO SEE something'
         slice_line_buf 1
 
       # slice on whitespace
