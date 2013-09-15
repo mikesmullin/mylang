@@ -56,7 +56,7 @@ class Ast # Parser
     return
 
   compile: (file, buf) ->
-    symbol_array = @lexer buf # distinguish lines, indentation, spacing, and words/non-spacing
+    symbol_array = @lexer buf # distinguish lines, indentation, spacing, words, and non-words
     symbol_array = @java_symbolizer symbol_array # distinguish keywords, operators, identifiers in source language
     tree = @syntaxer symbol_array # create Abstract Syntax Tree (AST)
 
@@ -152,8 +152,6 @@ class Ast # Parser
   # group one or more characters into symbols
   # also index possible pairs
   java_symbolizer: (symbol_array) ->
-    @pretty_print_symbol_array symbol_array
-
     #pairables = [
     #  type: SQUARE_BRACKET.OPEN, line: 1, char: 2, token: TOKEN
     #  type: SQUARE_BRACKET.CLOSE, line: 2, char: 33, token: TOKEN
@@ -164,9 +162,12 @@ class Ast # Parser
     #  2:
     #    33: token
     for symbol in symbol_array
-      if symbol.hasType SYMBOL.NONSPACE
+      if symbol.hasType SYMBOL.WORD
+        for keyword in SYNTAX.JAVA.KEYWORDS
+          if symbol.chars is keyword
+            symbol.types.push SYMBOL.KEYWORD
         #console.log symbol.chars
-        1
+    @pretty_print_symbol_array symbol_array
     return symbol_array
 
   syntaxer: (symbol_array) ->
@@ -180,7 +181,8 @@ class Ast # Parser
     last_line = 1
     process.stdout.write '( '
     for symbol in symbol_array
-      toString = -> "(#{symbol.line} #{symbol.types[0].enum} #{JSON.stringify symbol.chars}) "
+      types = []; types.push type.enum for type in symbol.types; types = types.join ', '
+      toString = -> "(#{symbol.line} #{types} #{JSON.stringify symbol.chars}) "
       if last_line isnt symbol.line
         last_line = symbol.line
         process.stdout.write " )\n( "
