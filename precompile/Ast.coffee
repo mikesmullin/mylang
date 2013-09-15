@@ -1,9 +1,7 @@
 fs = require 'fs'
 
 class Enum
-  constructor: (a) ->
-    for v, i in a
-      @[v] = enum: v
+  constructor: (a) -> @[v] = enum: v for v, i in a
 
 # ascii-based characters
 CHAR =
@@ -105,12 +103,9 @@ class Ast # Parser
 
     peekahead = (n) -> buf[zbyte+n]
     while ++zbyte < len # iterate every character in buffer
-      #unless char is 0
-      #  console.log c: c, byte: byte, symbol_array: JSON.stringify symbol_array
       c = buf[zbyte]
       byte = zbyte + 1
       ++char
-      #if zbyte > 20 then process.exit 0
 
       # slice on win/mac/unix line-breaks
       if c is CHAR.CR and peekahead(1) is CHAR.LF # windows
@@ -140,7 +135,8 @@ class Ast # Parser
   # group one or more characters into symbols
   # also index possible pairs
   symbolizer: (symbol_array) ->
-    console.log JSON.stringify symbol_array.slice(0, 10)
+    @pretty_print symbol_array
+    #console.log JSON.stringify symbol_array.slice(0, 10)
     #pairables = [
     #  type: SQUARE_BRACKET.OPEN, line: 1, char: 2, token: TOKEN
     #  type: SQUARE_BRACKET.CLOSE, line: 2, char: 33, token: TOKEN
@@ -158,14 +154,14 @@ class Ast # Parser
   syntaxer: (symbol_array) ->
     return {}
 
-  pretty_print: ->
-    return
-    #process.stdout.write "\n"
-    #for line in @lines
-    #  n = line
-    #  process.stdout.write '( '
-    #  toString = (n) -> "(#{n.node_type.name} #{n.token}) "
-    #  process.stdout.write toString n
-    #  while n = n.right
-    #    process.stdout.write toString n
-    #  process.stdout.write " )\n"
+  pretty_print: (symbol_array) ->
+    process.stdout.write "\n"
+    last_line = 1
+    process.stdout.write '( '
+    for symbol in symbol_array
+      toString = -> "(#{symbol.line} #{symbol.types[0].enum} #{JSON.stringify symbol.chars}) "
+      if last_line isnt symbol.line
+        last_line = symbol.line
+        process.stdout.write " )\n( "
+      process.stdout.write toString symbol
+    process.stdout.write " )\n"
