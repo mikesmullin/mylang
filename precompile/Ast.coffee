@@ -26,32 +26,29 @@ class Symbol
     return
 # in our system, symbols are like tags; a node can have multiple of them
 # but only a few make sense together
-SYMBOL = new Enum
-  'LINEBREAK','INDENT','NONSPACE','KEYWORD','LETTER','IDENTIFIER','OPERATOR',
+SYMBOL = new Enum ['LINEBREAK','INDENT','NONSPACE','KEYWORD','LETTER',
+  'IDENTIFIER','OPERATOR',
   'LITERAL','STRING','NUMBER','INTEGER','DECIMAL','HEX','REGEX','PUNCTUATION',
   'QUOTE','PARENTHESIS','BRACKET','BRACE','PAIR','OPEN','CLOSE',
   'COMMENT','LINE_COMMENT','MULTILINE_COMMENT','OPEN_MULTILINE_COMMENT',
   'CLOSE_MULTILINE_COMMENT','OPEN_MULTILINE_STRING',
   'CLOSE_MULTILINE_STRING','INC_LEVEL','DEC_LEVEL','OPEN_STRING',
-  'CLOSE_STRING','OPEN_MULTILINE','CLOSE_MULTILINE'
+  'CLOSE_STRING','OPEN_MULTILINE','CLOSE_MULTILINE']
 
 # syntax
 SYNTAX =
   JAVA: # proprietary to java
-    KEYWORDS:
-      'abstract','assert','boolean','break','byte','case','catch',
+    KEYWORDS: ['abstract','assert','boolean','break','byte','case','catch',
       'char','class','const','continue','default','do','double','else',
       'enum','extends','finally','float','for','goto','if','implements',
       'import','instanceof','int','interface','long','native','new',
       'package','private','protected','public','return','short','static',
       'strictfp','super','switch','synchronized','this','throw','throws',
-      'transient','try','void','volatile','while'
-    LITERALS: 'false','null','true'
+      'transient','try','void','volatile','while']
+    LITERALS: ['false','null','true']
 
 module.exports =
 class Ast # Parser
-  constructor: ->
-
   open: (file, cb) ->
     fs.readFile file, encoding: 'utf8', flag: 'r', (err, data) =>
       throw err if err
@@ -59,12 +56,12 @@ class Ast # Parser
       cb()
     return
 
-  compile: (file, buf) -> # public (String, String): void
-    tokens = @lexer buf # distinguish lines, space, and words
-    tokens = @tokenizer tokens # distinguish keywords, operators, identifiers
-    tree   = @syntaxer tokens # create Abstract Syntax Tree (AST)
+  compile: (file, buf) ->
+    symbol_array = @lexer buf # distinguish lines, indentation, spacing, and words/non-spacing
+    symbol_array = @symbolizer symbol_array # distinguish keywords, operators, identifiers in source language
+    tree = @syntaxer tokens # create Abstract Syntax Tree (AST)
 
-  lexer: (buf) -> # (String): TOKEN[]
+  lexer: (buf) ->
     len = buf.length # number
     char = 1
     line = 1
@@ -78,24 +75,24 @@ class Ast # Parser
     word_on_this_line = false
     indent_type_this_line = undefined
 
-    push_symbol = (chars, symbol, meta={}) -> # (String, SYMBOL): void
+    push_symbol = (chars, symbol, meta={}) ->
       meta.line = line; meta.char = char
       symbol_array.push new Symbol chars, [symbol], meta
       return
-    slice_line_buf = (chars, symbol) -> # (int, SYMBOL): void
+    slice_line_buf = (chars, symbol) ->
       push_symbol chars, symbol
       line++
       zchar += chars-1
       word_on_this_line = false
       indent_type_this_line = undefined
       return
-    slice_word_buf = -> # (void): void
+    slice_word_buf = ->
       if word_buf.length
         push_symbol word_buf, SYMBOL.NONSPACE
         word_on_this_line ||= true
         word_buf = ''
       return
-    slice_space_buf = -> # (void): void
+    slice_space_buf = ->
       if indent_buf.length
         push_symbol indent_buf, SYMBOL.INDENT, indent_type: indent_type_this_line
         indent_buf = ''
@@ -104,7 +101,7 @@ class Ast # Parser
         word_buf = ''
       return
 
-    peekahead = (n) -> buf[zchar+n] # (int): void
+    peekahead = (n) -> buf[zchar+n]
     while ++zchar < len # iterate every character in buffer
       c = buf[zchar]
       char = zchar + 1
@@ -139,51 +136,35 @@ class Ast # Parser
     slice_space_buf()
     slice_word_buf()
     slice_line_buf()
-    return tokens
+    return symbol_array
 
-  # TODO: call this symbolizer; groups one or more tokens into symbols
-  tokenizer: (tokens) -> # (TOKEN[]): TOKEN[]
+  # group one or more characters into symbols
+  symbolizer: (symbol_array) ->
+    #pairables = [
+    #  type: SQUARE_BRACKET.OPEN, line: 1, char: 2, token: TOKEN
+    #  type: SQUARE_BRACKET.CLOSE, line: 2, char: 33, token: TOKEN
+    #]
+    #pairables_by_xy =
+    #  1:
+    #    2: token
+    #  2:
+    #    33: token
+    #for own token in tokens
+    #  switch token.char
+    #    when ' '
+    return symbol_array
 
-    pairables = [
-      type: SQUARE_BRACKET.OPEN, line: 1, char: 2, token: TOKEN
-      type: SQUARE_BRACKET.CLOSE, line: 2, char: 33, token: TOKEN
-    ]
-    pairables_by_xy =
-      1:
-        2: token
-      2:
-        33: token
-    for own token in tokens
-      switch token.char
-        when ' '
-
-
-    return tokens
-
-  syntaxer: (tokens) -> # (TOKEN[]): SyntaxTree
+  syntaxer: (tokens) ->
     return {}
-
-
-
-
-
-
-
-
-
-
-
-
 
   pretty_print: ->
     return
-    process.stdout.write "\n"
-    for line in @lines
-      n = line
-      process.stdout.write '( '
-      toString = (n) -> "(#{n.node_type.name} #{n.token}) "
-      process.stdout.write toString n
-      while n = n.right
-        process.stdout.write toString n
-      process.stdout.write " )\n"
-
+    #process.stdout.write "\n"
+    #for line in @lines
+    #  n = line
+    #  process.stdout.write '( '
+    #  toString = (n) -> "(#{n.node_type.name} #{n.token}) "
+    #  process.stdout.write toString n
+    #  while n = n.right
+    #    process.stdout.write toString n
+    #  process.stdout.write " )\n"
