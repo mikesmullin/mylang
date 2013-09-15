@@ -19,7 +19,7 @@ INDENT = new Enum ['SPACE', 'TAB', 'MIXED']
 
 # a symbol represents a group of one or more neighboring characters
 class Symbol
-  constructor: (@tokens, @types, meta={}) -> # (TOKEN[], SYMBOL[], Object?): void
+  constructor: (@chars, @types, meta={}) -> # (TOKEN[], SYMBOL[], Object?): void
     @[k] = v for own k, v of meta
     return
 # in our system, symbols are like tags; a node can have multiple of them
@@ -60,6 +60,7 @@ class Ast # Parser
     tree = @syntaxer symbol_array # create Abstract Syntax Tree (AST)
 
   lexer: (buf) ->
+    c = ''
     len = buf.length # number
     char = 1
     line = 1
@@ -73,15 +74,8 @@ class Ast # Parser
     indent_type_this_line = undefined
 
     push_symbol = (chars, symbol, meta={}) ->
-      meta.line = line; meta.char = char
+      meta.line = line; meta.char = char - chars.length
       symbol_array.push new Symbol chars, [symbol], meta
-      return
-    slice_line_buf = (chars, symbol) ->
-      push_symbol chars, symbol
-      line++
-      zchar += chars-1
-      word_on_this_line = false
-      indent_type_this_line = undefined
       return
     slice_word_buf = ->
       if word_buf.length
@@ -95,25 +89,34 @@ class Ast # Parser
         indent_buf = ''
       else if space_buf.length
         push_symbol space_buf, SYMBOL.SPACE
-        word_buf = ''
+        space_buf = ''
+      return
+    slice_line_buf = (num_chars) ->
+      slice_space_buf()
+      slice_word_buf()
+      push_symbol buf.substr(c,num_chars), SYMBOL.LINEBREAK
+      line++
+      zchar += num_chars-1
+      word_on_this_line = false
+      indent_type_this_line = undefined
       return
 
     peekahead = (n) -> buf[zchar+n]
     while ++zchar < len # iterate every character in buffer
+      console.log c: c, char: char, symbol_array: JSON.stringify symbol_array
       c = buf[zchar]
       char = zchar + 1
+      if zchar > 20 then process.exit 0
 
       # slice on win/mac/unix line-breaks
       if c is CHAR.CR and peekahead(1) is CHAR.LF # windows
         slice_line_buf 2
-        continue
       else if c is CHAR.CR or c is CHAR.LF # mac or linux
+        console.log 'I DO SEE something'
         slice_line_buf 1
-        continue
-      else
 
       # slice on whitespace
-      if c is CHAR.SPACE or c is CHAR.TAB # whitespace
+      else if c is CHAR.SPACE or c is CHAR.TAB # whitespace
         slice_word_buf()
         if word_on_this_line # spacing
           # spacing inbetween characters doesn't usually matter so we won't count it
@@ -124,14 +127,10 @@ class Ast # Parser
           else if c is CHAR.TAB
             indent_type_this_line ||= if indent_type_this_line is INDENT.SPACE then INDENT.MIXED else INDENT.TAB
           indent_buf += c
-        continue
-      else # non-space
+      else # word/non-space
         slice_space_buf()
         word_buf += c
-        continue
 
-    slice_space_buf()
-    slice_word_buf()
     slice_line_buf()
     return symbol_array
 
