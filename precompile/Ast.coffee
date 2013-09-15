@@ -5,8 +5,7 @@ class Enum
   #  for own k, v of h
   #    @[k] = name: k, id: v
   constructor: (a) ->
-    for v, i in a
-      @[i] = name: i, id: v
+    @[v] = i+1 for v, i in a
 
 # ascii-based characters
 CHAR =
@@ -18,6 +17,8 @@ CHAR =
   CLOSE_BRACKET: ']', BACKSLASH: "\\", CARET: '^', UNDERSCORE: '_', GRAVE: '`', 
   OPEN_BRACE: '{', CLOSE_BRACE: '}', BAR: '|', TILDE: '~'
 
+INDENT = new Enum 'SPACE', 'TAB', 'MIXED'
+
 # a symbol represents a group of one or more neighboring characters
 class Symbol
   constructor: (@tokens, @types, meta={}) -> # (TOKEN[], SYMBOL[], Object?): void
@@ -25,8 +26,8 @@ class Symbol
     return
 # in our system, symbols are like tags; a node can have multiple of them
 # but only a few make sense together
-SYMBOL =
-  'LINEBREAK','INDENT','WORD','KEYWORD','LETTER','IDENTIFIER','OPERATOR',
+SYMBOL = new Enum
+  'LINEBREAK','INDENT','NONSPACE','KEYWORD','LETTER','IDENTIFIER','OPERATOR',
   'LITERAL','STRING','NUMBER','INTEGER','DECIMAL','HEX','REGEX','PUNCTUATION',
   'QUOTE','PARENTHESIS','BRACKET','BRACE','PAIR','OPEN','CLOSE',
   'COMMENT','LINE_COMMENT','MULTILINE_COMMENT','OPEN_MULTILINE_COMMENT',
@@ -50,6 +51,7 @@ SYNTAX =
 module.exports =
 class Ast # Parser
   constructor: ->
+
   open: (file, cb) ->
     fs.readFile file, encoding: 'utf8', flag: 'r', (err, data) =>
       throw err if err
@@ -68,29 +70,36 @@ class Ast # Parser
     zchar = -1 # zero-indexed
     level = 0
     line  = 1
-    #lines = []
-    #line_buf = ''
-    slice_line_buf = (chars, symbol) -> # (int, SYMBOL): void
-      push_symbol
-      #lines.push line_buf
-      line++
-      #line_buf = ''
-      zchar += chars-1
-      return
+    symbol_array = []
+    word_on_this_line = false
     space_buf = ''
     word_buf = ''
+    indent_buf = ''
+    indent_type_this_line = undefined
     tokens = []
-    push_token = (token, type) -> # (String, Int): void
-      tokens.push new Token token, [type], line: line, char: char
+    push_symbol = (chars, symbol, meta={}) -> # (String, SYMBOL): void
+      meta.line = line; meta.char = char
+      symbol_array.push new Symbol chars, [symbol], meta
       return
-    slice_word_buf = => # (void): void
+    slice_line_buf = (chars, symbol) -> # (int, SYMBOL): void
+      push_symbol chars, symbol
+      line++
+      zchar += chars-1
+      word_on_this_line = false
+      indent_type_this_line = undefined
+      return
+    slice_word_buf = -> # (void): void
       if word_buf.length
-        push_token word_buf, TOKEN.WORD
+        push_symbol word_buf, SYMBOL.NONSPACE
+        word_on_this_line ||= true
         word_buf = ''
       return
-    slice_space_buf = => # (void): void
-      if space_buf.length
-        push_token space_buf, TOKEN.SPACE
+    slice_space_buf = -> # (void): void
+      if indent_buf.length
+        push_symbol indent_buf, SYMBOL.INDENT
+        indent_buf = ''
+      else if space_buf.length
+        push_symbol space_buf, SYMBOL.SPACE
         word_buf = ''
       return
     lookahead = (n) -> buf[zchar+n] # (int): void
@@ -107,6 +116,9 @@ incl. line, char, and level positioning of symbols
 in some languages, indentation is ignored, but it should
 still be measured while we're looping here
 because multiple languages can share the same lexer
+so the information it should gather about the indentation should be:
+  exact string (which you can also get .length of)
+  whether its SPACES, TABS, or MIXED
 ###
 
       # count win/mac/unix line-breaks
@@ -117,11 +129,19 @@ because multiple languages can share the same lexer
         slice_line_buf 1
         continue
       else
-        #line_buf += c
 
-      if c is CHAR.SPACE or c is CHAR.TAB # spacing
+      # count indentation
+      if c is CHAR.SPACE or c is CHAR.TAB # whitespace
         slice_word_buf()
-        space_buf += c
+        if word_on_this_line # spacing
+          # spacing inbetween characters doesn't usually matter so we won't count it
+          space_buf += c
+        else # indentation
+          if c is CHAR.SPACE
+            indent_type_this_line ||= if indent_type_this_line is INDENT.TAB then INDENT.MIXED else INDENT.SPACE
+          else if c is CHAR.TAB
+            indent_type_this_line ||= if indent_type_this_line is INDENT.SPACE then INDENT.MIXED else INDENT.TAB
+          indent_buf += c
         continue
       else # word
         slice_space_buf()
