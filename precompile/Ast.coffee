@@ -49,10 +49,13 @@ class Symbol
     return symbol
   split: (index, len, arr, i) ->
     l = @chars.length
-    left = @clone @chars.substr 0, index
-    middle = @clone @chars.substr index, len
-    right = @clone @chars.substr index+len, l-index-len
-    arr.splice i, 1, left, middle, right
+    args = [i, 1]
+    if index > 0
+      args.push @clone @chars.substr 0, index # left
+    args.push @clone @chars.substr index, len # middle
+    if ll = l-index-len > 0
+      args.push @clone @chars.substr index+len, ll # right
+    Array::splice.apply arr, args
     return arr[i+1]
   merge: (arr, i, len) ->
     symbol = arr[i]
@@ -190,12 +193,13 @@ class Ast # Parser
       slice_space_buf()
       slice_nonword_buf()
       slice_word_buf()
-      push_symbol buf.substr(zbyte,num_chars), SYMBOL.LINEBREAK
-      line++
-      char = 0
-      zbyte += num_chars-1
-      word_on_this_line = false
-      indent_type_this_line = undefined
+      if zbyte < len
+        push_symbol buf.substr(zbyte,num_chars), SYMBOL.LINEBREAK
+        line++
+        char = 0
+        zbyte += num_chars-1
+        word_on_this_line = false
+        indent_type_this_line = undefined
       return
 
     peekahead = (n) -> buf[zbyte+n]
@@ -241,7 +245,7 @@ class Ast # Parser
     pairables = []
     i = -1
     len = symbol_array.length
-    next_symbol = ->
+    next_symbol = =>
       symbol = symbol_array[i]
       # TODO: detect whether we are currently inside of a pair (e.g. string, comment) and ignore if needed
 
@@ -259,14 +263,17 @@ class Ast # Parser
             symbol.pushUniqueType SYMBOL.LITERAL
             return
 
+        # anything else must be
+        # identifiers
         symbol.pushUniqueType SYMBOL.IDENTIFIER
 
       else if symbol.hasType SYMBOL.NONWORD
         match_symbol = (chars, success_cb) ->
           unless -1 is (p = symbol.chars.indexOf chars) # partial match, at least
-            unless symbol.chars is chars # full match
+            if symbol.chars is chars # full match
+            else
               symbol = symbol.split p, chars.length, symbol_array, i
-              --i; return # backup and re-evaluate after split
+              --i # backup and re-evaluate since we split
             success_cb()
             return true
           return false
