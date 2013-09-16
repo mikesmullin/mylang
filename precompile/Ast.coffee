@@ -43,6 +43,10 @@ class Symbol
   hasType: (type) ->
     return true for _type in @types when  _type.enum is type.enum
     return false
+  removeType: (type) ->
+    for _type, i in @types when _type.enum is type.enum
+      @types.splice i, 1
+      return
   clone: (char_delta, new_chars) ->
     symbol = deepCopy @
     symbol.chars = new_chars if new_chars
@@ -61,7 +65,7 @@ class Symbol
   merge: (arr, i, len) ->
     # TODO: also adjust char position
     symbol = arr[i]
-    for ii in [i+1..len]
+    for ii in [i+1..len+1]
       for own k, v of arr[ii]
         if k is 'chars'
           symbol[k] += v
@@ -81,6 +85,7 @@ class Symbol
           else
             symbol[k] = v
     arr.splice i, len, symbol
+    return [arr[i], len*-1]
 
 # in our system, symbols are like tags; a node can have multiple of them
 # but only a few make sense together
@@ -247,6 +252,12 @@ class Ast # Parser
     pairables = []
     i = -1
     len = symbol_array.length
+    lookahead = (n) ->
+      i += n
+      next_symbol()
+      symbol = symbol_array[i]
+      i -= n
+      return symbol
     next_symbol = =>
       symbol = symbol_array[i]
       console.log "i is #{i}"
@@ -267,17 +278,18 @@ class Ast # Parser
             symbol.pushUniqueType SYMBOL.LITERAL
             return
 
-        # integer
+        # number
         if symbol.chars.match /^-?\d+$/
           symbol.pushUniqueType SYMBOL.NUMBER
-          symbol.pushUniqueType SYMBOL.INTEGER
-          return
-
-        # decimal
-        # TODO: add lookahead to see if next node is non-word CHAR.PERIOD
-        if symbol.chars.match /^-?[\d\.]+$/
-          symbol.pushUniqueType SYMBOL.NUMBER
-          symbol.pushUniqueType SYMBOL.DECIMAL
+          if lookahead(1).chars is '.' and lookahead(2).hasType SYMBOL.NUMBER
+            # merge the next two together
+            [symbol, delta] = symbol.merge symbol_array, i, 3
+            len += delta
+            symbol.pushUniqueType SYMBOL.DECIMAL
+            symbol.removeType SYMBOL.NONWORD
+            symbol.removeType SYMBOL.INTEGER
+          else
+            symbol.pushUniqueType SYMBOL.INTEGER
           return
 
         # hexadecimal
