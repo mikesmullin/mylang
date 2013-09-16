@@ -66,9 +66,8 @@ class Symbol
     Array::splice.apply arr, args
     return [arr[i+1], args.length - 3]
   merge: (arr, i, len) ->
-    # TODO: also adjust char position
     symbol = arr[i]
-    for ii in [i+1..len+1]
+    for ii in [i+1...len]
       for own k, v of arr[ii]
         if k is 'chars'
           symbol[k] += v
@@ -76,6 +75,8 @@ class Symbol
           symbol[k] ||= []
           for vv in v
             symbol.pushUniqueType vv
+        else if k is 'line' or k is 'char'
+          symbol[k] = Math.min symbol[k], v
         else
           if Object::toString.call(v) is "[object Array]"
             for vv in v
@@ -92,14 +93,11 @@ class Symbol
 
 # in our system, symbols are like tags; a node can have multiple of them
 # but only a few make sense together
-SYMBOL = new Enum ['LINEBREAK','INDENT','WHITESPACE','WORD','NONWORD','KEYWORD','LETTER',
-  'IDENTIFIER','OPERATOR','STATEMENT_END',
-  'LITERAL','STRING','NUMBER','INTEGER','DECIMAL','HEX','REGEX','PUNCTUATION',
-  'QUOTE','PARENTHESIS','BRACKET','BRACE','PAIR','OPEN','CLOSE',
-  'COMMENT','LINE_COMMENT','MULTILINE_COMMENT','OPEN_MULTILINE_COMMENT',
-  'CLOSE_MULTILINE_COMMENT','OPEN_MULTILINE_STRING',
-  'CLOSE_MULTILINE_STRING','INC_LEVEL','DEC_LEVEL','OPEN_STRING',
-  'CLOSE_STRING','OPEN_MULTILINE','CLOSE_MULTILINE']
+SYMBOL = new Enum ['LINEBREAK','INDENT','WHITESPACE','WORD','NONWORD','KEYWORD',
+  'LETTER','IDENTIFIER','OPERATOR','STATEMENT_END','LITERAL','STRING','NUMBER',
+  'INTEGER','DECIMAL','HEX','REGEX','PUNCTUATION','QUOTE','PARENTHESIS',
+  'SQUARE_BRACKET','ANGLE_BRACKET','BRACE','PAIR','OPEN','CLOSE','INC_LEVEL',
+  'DEC_LEVEL','COMMENT','ENDLINE_COMMENT','MULTILINE_COMMENT']
 
 OPERATOR = new Enum ['UNARY_LEFT','UNARY_RIGHT','BINARY_LEFT_RIGHT',
   'BINARY_LEFT_LEFT','BINARY_RIGHT_RIGHT','TERNARY_RIGHT_RIGHT_RIGHT']
@@ -132,14 +130,14 @@ SYNTAX =
       { type: OPERATOR.BINARY_LEFT_RIGHT, name: 'assignment', symbols: ['=', '+=', '-=', '*=', '/=', '%=', '&=', '^=', '|=', '<<=', '>>=', '>>>='] }
     ]
     PAIRS: [
-      { name: 'index', symbols: ['[', ']'] }
-      { name: 'arguments', symbols: ['(', ')'] }
-      { name: 'generic', symbols: ['<', '>'] }
-      { name: 'block', symbols: ['{', '}'] }
-      { name: 'string', symbols: ['"', '"'] }
-      { name: 'character', symbols: ["'", "'"] }
-      { name: 'multi-line comment', symbols: ['/*', '*/'] }
-      { name: 'single-line comment', symbols: ['//'] } # no match means until end of line
+      { name: 'index', types: [SYMBOL.BRACKET], symbols: ['[', ']'] }
+      { name: 'arguments', types: [SYMBOL.PARENTHESIS], symbols: ['(', ')'] }
+      { name: 'generic', types: [SYMBOL.ANGLE_BRACKET], symbols: ['<', '>'] }
+      { name: 'block', types: [SYMBOL.BRACE], symbols: ['{', '}'] }
+      { name: 'string', types: [SYMBOL.QUOTE, SYMBOL.STRING], symbols: ['"', '"'] }
+      { name: 'character', types: [SYMBOL.QUOTE, SYMBOL.STRING], symbols: ["'", "'"] }
+      { name: 'multi-line comment', types: [SYMBOL.COMMENT, SYMBOL.MULTILINE_COMMENT], symbols: ['/*', '*/'] }
+      { name: 'single-line comment', types: [SYMBOL.COMMENT, SYMBOL.ENDLINE_COMMENT], symbols: ['//'] } # no match means until end of line
       # TODO: heredocs would go here, too, if Java had any
     ]
 
@@ -255,16 +253,19 @@ class Ast # Parser
     pairables = []
     i = -1
     len = symbol_array.length
-    looking_around = false
+    searching_for_other_pair = false
     lookaround = (n) ->
-      return new Symbol null, [], {} if looking_around # dont recurse
-      looking_around = true
-      i += n
-      if n > 0
+      console.log ">>> BEGIN LOOK #{i} + #{n}"
+      old_i = i
+      target_i = i + n
+      while i < target_i
+        i++
+        console.log "I IS NOW #{i}"
         next_symbol()
       symbol = symbol_array[i]
-      i -= n
-      looking_around = false
+      console.log "symbol #{i} is #{JSON.stringify symbol}"
+      i = old_i
+      console.log "<< RETURN LOOK #{i} + #{n}"
       return symbol
     next_symbol = =>
       symbol = symbol_array[i]
@@ -320,13 +321,64 @@ class Ast # Parser
             if symbol.chars is chars # full match
               success_cb()
             else
-              console.log "matched symbol #{chars} in #{symbol.chars}"
+              console.log "found symbol \"#{chars}\" in \"#{symbol.chars}\""
               [symbol, delta] = symbol.split p, chars.length, symbol_array, i
               len += delta # resize length
               console.log "and adjusted len by +#{delta}"
               --i # backup and re-evaluate since we split
             return true
           return false
+
+        # pairs
+        for pair in SYNTAX.JAVA.PAIRS
+          for chars, k in pair.symbols
+            return if match_symbol chars, ->
+              console.log "found pair #{chars} in #{symbol.chars} at #{i}"
+              symbol.pushUniqueType SYMBOL.PAIR
+              for type in pair.types
+                symbol.pushUniqueType type
+              # same symbol used to both open and close
+              if pair.symbols[0] is pair.symbols[1]
+                symbol.pushUniqueType SYMBOL.OPEN
+                symbol.pushUniqueType SYMBOL.CLOSE
+              # distinct opening symbol
+              else if k is 0
+                symbol.pushUniqueType SYMBOL.OPEN
+              # distinct closing symbol
+              else if k is 1
+                symbol.pushUniqueType SYMBOL.CLOSE
+              symbol.pair = name: pair.name
+              pairables.push symbol
+
+              console.log "searching ", searching_for_other_pair
+              Ast::pretty_print_symbol_array symbol_array
+
+              if k is 0 and symbol.hasType(SYMBOL.STRING, SYMBOL.COMMENT) and
+                  not searching_for_other_pair
+                # everything inbetween these symbols can be merged into a single symbol
+                # so its best to find the ending pair of these types right away
+                # just lookahead to until we find the next unescaped occurrence
+                ii = 0
+                found = false
+                searching_for_other_pair = true
+                console.log "SEARCHING FOR MATE TO #{chars}... WHICH LOOKS LIKE #{pair.symbols[1]}"
+                while ++ii < len-i
+                  s = lookaround ii
+                  console.log ""
+                  console.log "+++ HAVE LOOKED FROM #{i} TO +#{ii} FINDING #{JSON.stringify s}"
+                  if s.hasType(SYMBOL.PAIR) and
+                      s.hasType(SYMBOL.CLOSE) and
+                      (s.chars is pair.symbols[1] or pair.symbols[1] is undefined)
+                    console.log 'THIS SATISFIES ME', JSON.stringify s
+                    found = true
+                    searching_for_other_pair = false
+                    console.log "will merge from #{i} +#{ii+1}"
+                    # commence symbol merge
+                    [symbol, delta] = symbol.merge symbol_array, i, ii+1
+                    len += delta
+                    break
+                unless found
+                  throw "FATAL: unmatched pair \"#{symbol.chars}\" found at #{symbol.line}:#{symbol.char}."
 
         # statement end
         return if match_symbol ';', ->
@@ -341,19 +393,6 @@ class Ast # Parser
               symbol.operator =
                 type: operator.type
                 name: operator.name
-
-        # pairs
-        for pair in SYNTAX.JAVA.PAIRS
-          for chars, k in pair.symbols
-            return if match_symbol chars, ->
-              console.log "found pair #{chars} in #{symbol.chars} at #{i}"
-              symbol.pushUniqueType SYMBOL.PAIR
-              if k is 0 then symbol.pushUniqueType SYMBOL.OPEN
-              if k is 1 then symbol.pushUniqueType SYMBOL.CLOSE
-              symbol.pair =
-                name: pair.name
-              pairables.push symbol
-
 
     next_symbol() while ++i < len
 
@@ -383,12 +422,11 @@ class Ast # Parser
   pretty_print_symbol_array: (symbol_array) ->
     process.stdout.write "\n"
     last_line = 1
-    i = 0
     process.stdout.write '( '
-    for symbol in symbol_array
-      return if ++i > 50
+    for symbol, i in symbol_array
+      return if i > 80
       types = []; types.push type.enum for type in symbol.types; types = types.join ', '
-      toString = -> "(#{symbol.line} #{types} #{JSON.stringify symbol.chars}) "
+      toString = -> "(#{i} #{types} #{JSON.stringify symbol.chars}) "
       if last_line isnt symbol.line
         last_line = symbol.line
         process.stdout.write " )\n( "
