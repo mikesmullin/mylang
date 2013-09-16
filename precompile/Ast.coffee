@@ -43,21 +43,23 @@ class Symbol
   hasType: (type) ->
     return true for _type in @types when  _type.enum is type.enum
     return false
-  clone: (new_chars) ->
+  clone: (char_delta, new_chars) ->
     symbol = deepCopy @
     symbol.chars = new_chars if new_chars
+    symbol.char += char_delta
     return symbol
   split: (index, len, arr, i) ->
     l = @chars.length
     args = [i, 1]
     if index > 0
-      args.push @clone @chars.substr 0, index # left
-    args.push @clone @chars.substr index, len # middle
+      args.push @clone 0, @chars.substr 0, index # left
+    args.push @clone index, @chars.substr index, len # middle
     if ll = l-index-len > 0
-      args.push @clone @chars.substr index+len, ll # right
+      args.push @clone index+len, @chars.substr index+len, ll # right
     Array::splice.apply arr, args
-    return arr[i+1]
+    return [arr[i+1], args.length - 3]
   merge: (arr, i, len) ->
+    # TODO: also adjust char position
     symbol = arr[i]
     for ii in [i+1..len]
       for own k, v of arr[ii]
@@ -276,7 +278,10 @@ class Ast # Parser
             if symbol.chars is chars # full match
               success_cb()
             else
-              symbol = symbol.split p, chars.length, symbol_array, i
+              console.log "matched symbol #{chars} in #{symbol.chars}"
+              [symbol, delta] = symbol.split p, chars.length, symbol_array, i
+              len += delta # resize length
+              console.log "and adjusted len by +#{delta}"
               --i # backup and re-evaluate since we split
             return true
           return false
@@ -290,6 +295,7 @@ class Ast # Parser
         for operator in SYNTAX.JAVA.OPERATORS
           for chars in operator.symbols
             return if match_symbol chars, ->
+              console.log "found symbol #{chars} in #{symbol.chars}"
               symbol.pushUniqueType SYMBOL.OPERATOR
               symbol.operator =
                 type: operator.type
@@ -302,7 +308,8 @@ class Ast # Parser
             # TODO: collapse symbols (e.g. a line_group containing only '@Override' as a NON-SPACE is one symbol plus spacing
             # how best to do this confidently? hmm... precedence? confidence levels with last step being collapse or split?
             # this is probably best moved to the syntaxer step if we cannot decide here
-            match_symbol chars, ->
+            return if match_symbol chars, ->
+              console.log "found pair #{chars} in #{symbol.chars} at #{i}"
               symbol.pushUniqueType SYMBOL.PAIR
               if k is 0 then symbol.pushUniqueType SYMBOL.OPEN
               if k is 1 then symbol.pushUniqueType SYMBOL.CLOSE
@@ -314,7 +321,7 @@ class Ast # Parser
     next_symbol() while ++i < len
 
     @pretty_print_symbol_array symbol_array
-    #console.log pairables
+    console.log pairables
     return symbol_array
 
   syntaxer: (symbol_array) ->
