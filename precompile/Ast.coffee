@@ -1,4 +1,20 @@
 fs = require 'fs'
+deepCopy = (obj) ->
+  if Object::toString.call(obj) is "[object Array]"
+    out = []
+    i = 0
+    len = obj.length
+    while i < len
+      out[i] = arguments.callee(obj[i])
+      i++
+    return out
+  if typeof obj is "object"
+    out = {}
+    i = undefined
+    for i of obj
+      out[i] = arguments.callee(obj[i])
+    return out
+  obj
 
 class Enum
   constructor: (a) -> @[v] = enum: v for v, i in a
@@ -17,16 +33,52 @@ INDENT = new Enum ['SPACE', 'TAB', 'MIXED']
 
 # a symbol represents a group of one or more neighboring characters
 class Symbol
-  constructor: (@chars, @types, meta={}) -> # (TOKEN[], SYMBOL[], Object?): void
+  constructor: (@chars, @types, meta={}) ->
     @[k] = v for own k, v of meta
+    return
+  pushUniqueType: (v) ->
+    @types.push v if -1 is @types.indexOf v
     return
   hasType: (type) ->
     return true for _type in @types when  _type is type
     return false
+  clone: (new_chars) ->
+    symbol = deepCopy @
+    symbol.chars = new_chars if new_chars
+    return symbol
+  split: (index, len, arr, i) ->
+    l = @chars.length
+    left = @clone @chars.substr 0, index
+    middle = @clone @chars.substr index, len
+    right = @clone @chars.substr index+len, l-index-len
+    arr.splice i, 1, left, middle, right
+  merge: (arr, i, len) ->
+    symbol = arr[i]
+    for ii in [i+1..len]
+      for own k, v of arr[ii]
+        if k is 'chars'
+          symbol[k] += v
+        else if k is 'types'
+          symbol[k] ||= []
+          for vv in v
+            symbol.pushUniqueType vv
+        else
+          if Object::toString.call(v) is "[object Array]"
+            for vv in v
+              symbol[k] ||= []
+              symbol[k].push vv
+          else if typeof v is 'object'
+            for own kk, vv of v
+              symbol[k] ||= {}
+              symbol[k][kk] = vv
+          else
+            symbol[k] = v
+    arr.splice i, len, symbol
+
 # in our system, symbols are like tags; a node can have multiple of them
 # but only a few make sense together
 SYMBOL = new Enum ['LINEBREAK','INDENT','SPACE','WORD','NONWORD','KEYWORD','LETTER',
-  'IDENTIFIER','OPERATOR',
+  'IDENTIFIER','OPERATOR','STATEMENT_END',
   'LITERAL','STRING','NUMBER','INTEGER','DECIMAL','HEX','REGEX','PUNCTUATION',
   'QUOTE','PARENTHESIS','BRACKET','BRACE','PAIR','OPEN','CLOSE',
   'COMMENT','LINE_COMMENT','MULTILINE_COMMENT','OPEN_MULTILINE_COMMENT',
@@ -65,14 +117,14 @@ SYNTAX =
       type: OPERATOR.BINARY_LEFT_RIGHT, name: 'assignment', symbols: ['=', '+=', '-=', '*=', '/=', '%=', '&=', '^=', '|=', '<<=', '>>=', '>>>=']
     ]
     PAIRS: [
-      name: 'index', symbols: ['[', ']']
-      name: 'arguments', symbols: ['(', ')']
-      name: 'generic', symbols: ['<', '>']
-      name: 'block', symbols: ['{', '}']
-      name: 'string', symbols: ['"', '"']
-      name: 'character', symbols: ["'", "'"]
-      name: 'multi-line comment', symbols: ['/*', '*/']
-      name: 'single-line comment', symbols: ['//'] # no match means until end of line
+      { name: 'index', symbols: ['[', ']'] }
+      { name: 'arguments', symbols: ['(', ')'] }
+      { name: 'generic', symbols: ['<', '>'] }
+      { name: 'block', symbols: ['{', '}'] }
+      { name: 'string', symbols: ['"', '"'] }
+      { name: 'character', symbols: ["'", "'"] }
+      { name: 'multi-line comment', symbols: ['/*', '*/'] }
+      { name: 'single-line comment', symbols: ['//'] } # no match means until end of line
       # TODO: heredocs would go here, too, if Java had any
     ]
 
@@ -132,6 +184,7 @@ class Ast # Parser
         space_buf = ''
       return
     slice_line_buf = (num_chars) ->
+      # TODO: link symbols by line_group array, in addition to line numbers
       slice_space_buf()
       slice_nonword_buf()
       slice_word_buf()
@@ -170,7 +223,7 @@ class Ast # Parser
           indent_buf += c
       else
         slice_space_buf()
-        if c.match /\w/ # word character
+        if c.match /[a-zA-Z0-9_]/ # word character
           slice_nonword_buf()
           word_buf += c
         else # non-word character
@@ -192,45 +245,57 @@ class Ast # Parser
         # keywords
         for keyword in SYNTAX.JAVA.KEYWORDS
           if symbol.chars is keyword
-            symbol.types.push SYMBOL.KEYWORD
+            symbol.pushUniqueType SYMBOL.KEYWORD
             return
 
         # literals
         for literal in SYNTAX.JAVA.LITERALS
           if symbol.chars is literal
-            symbol.types.push SYMBOL.LITERAL
+            symbol.pushUniqueType SYMBOL.LITERAL
             return
 
       else if symbol.hasType SYMBOL.NONWORD
+        # statement end
+        # TODO: split symbol
+        unless -1 is (p = symbol.chars.indexOf ';')
+          symbol.pushUniqueType SYMBOL.STATEMENT_END
+
         # TODO: do something about operators and pairs that are next to each other in the same NONWORD
         # operators
         for operator in SYNTAX.JAVA.OPERATORS
           for chars in operator.symbols
             if symbol.chars is operator.symbols
-              symbol.types.push SYMBOL.OPERATOR
+              symbol.pushUniqueType SYMBOL.OPERATOR
               symbol.operator =
                 type: operator.type
                 name: operator.name
               return
 
         # pairs
+        # TODO: use braces pairs to determine symbol level for all symbols inbetween
         for pair in SYNTAX.JAVA.PAIRS
+          console.log symbol.chars
           for chars, k in pair.symbols
+            console.log '   '+chars
             # TODO: split symbols into two if we find multiple pairs/operators in the same NONWORD?
-            # how best to do this confidently? hmm... precedence?
+            # TODO: collapse symbols (e.g. a line_group containing only '@Override' as a NON-SPACE is one symbol plus spacing
+            # how best to do this confidently? hmm... precedence? confidence levels with last step being collapse or split?
+            # this is probably best moved to the syntaxer step if we cannot decide here
             unless -1 is symbol.chars.indexOf chars
-              symbol.types.push SYMBOL.PAIR # TODO: ensure push stays unique
-              if k is 0 then symbol.types.push SYMBOL.OPEN
-              if k is 1 then symbol.types.push SYMBOL.CLOSE
+              symbol.pushUniqueType SYMBOL.PAIR
+              if k is 0 then symbol.pushUniqueType SYMBOL.OPEN
+              if k is 1 then symbol.pushUniqueType SYMBOL.CLOSE
               symbol.pair =
                 name: pair.name
+              console.log symbol
               pairables.push symbol
-              return
+              next
+
 
     next_symbol() while ++i < len
 
     @pretty_print_symbol_array symbol_array
-    console.log pairables
+    #console.log pairables
     return symbol_array
 
   syntaxer: (symbol_array) ->
