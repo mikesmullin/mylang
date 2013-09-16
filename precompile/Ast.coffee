@@ -41,7 +41,7 @@ class Symbol
     @types.push v if -1 is @types.indexOf v
     return
   hasType: (type) ->
-    return true for _type in @types when  _type is type
+    return true for _type in @types when  _type.enum is type.enum
     return false
   clone: (new_chars) ->
     symbol = deepCopy @
@@ -247,9 +247,11 @@ class Ast # Parser
     len = symbol_array.length
     next_symbol = =>
       symbol = symbol_array[i]
+      console.log "i is #{i}"
       # TODO: detect whether we are currently inside of a pair (e.g. string, comment) and ignore if needed
 
       if symbol.hasType SYMBOL.WORD
+        console.log 'its a word'
         # keywords
         # TODO: validate that keywords have space or pairs around them but not dots--or else its not a keyword
         for keyword in SYNTAX.JAVA.KEYWORDS
@@ -268,13 +270,14 @@ class Ast # Parser
         symbol.pushUniqueType SYMBOL.IDENTIFIER
 
       else if symbol.hasType SYMBOL.NONWORD
+        console.log "its a nonword"
         match_symbol = (chars, success_cb) ->
           unless -1 is (p = symbol.chars.indexOf chars) # partial match, at least
             if symbol.chars is chars # full match
+              success_cb()
             else
               symbol = symbol.split p, chars.length, symbol_array, i
               --i # backup and re-evaluate since we split
-            success_cb()
             return true
           return false
 
@@ -305,7 +308,6 @@ class Ast # Parser
               if k is 1 then symbol.pushUniqueType SYMBOL.CLOSE
               symbol.pair =
                 name: pair.name
-              console.log symbol
               pairables.push symbol
 
 
