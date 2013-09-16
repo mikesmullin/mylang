@@ -34,6 +34,9 @@ SYMBOL = new Enum ['LINEBREAK','INDENT','SPACE','WORD','NONWORD','KEYWORD','LETT
   'CLOSE_MULTILINE_STRING','INC_LEVEL','DEC_LEVEL','OPEN_STRING',
   'CLOSE_STRING','OPEN_MULTILINE','CLOSE_MULTILINE']
 
+OPERATOR = new Enum ['UNARY_LEFT','UNARY_RIGHT','BINARY_LEFT_RIGHT',
+  'BINARY_LEFT_LEFT','BINARY_RIGHT_RIGHT','TERNARY_RIGHT_RIGHT_RIGHT']
+
 # syntax
 SYNTAX =
   JAVA: # proprietary to java
@@ -45,6 +48,34 @@ SYNTAX =
       'strictfp','super','switch','synchronized','this','throw','throws',
       'transient','try','void','volatile','while']
     LITERALS: ['false','null','true']
+    OPERATORS: [
+      type: OPERATOR.UNARY_LEFT, name: 'postfix', symbols: [ '++', '--' ]
+      type: OPERATOR.UNARY_RIGHT, name: 'unary', symbols: ['++', '--', '+', '-', '~', '!']
+      type: OPERATOR.BINARY_LEFT_RIGHT, name: 'multiplicative', symbols: ['*', '/', '%']
+      type: OPERATOR.BINARY_LEFT_RIGHT, name: 'additive', symbols: ['+', '-']
+      type: OPERATOR.BINARY_LEFT_RIGHT, name: 'shift', symbols: ['<<', '>>', '>>>']
+      type: OPERATOR.BINARY_LEFT_RIGHT, name: 'relational', symbols: ['<', '>', '<=', '>=', 'instanceof']
+      type: OPERATOR.BINARY_LEFT_RIGHT, name: 'equality', symbols: ['==', '!=']
+      type: OPERATOR.BINARY_LEFT_RIGHT, name: 'bitwise AND', symbols: ['&']
+      type: OPERATOR.BINARY_LEFT_RIGHT, name: 'bitwise exclusive OR', symbols: ['^']
+      type: OPERATOR.BINARY_LEFT_RIGHT, name: 'bitwise inclusive OR', symbols: ['|']
+      type: OPERATOR.BINARY_LEFT_RIGHT, name: 'logical AND', symbols: ['&&']
+      type: OPERATOR.BINARY_LEFT_RIGHT, name: 'logical OR', symbols: ['||']
+      type: OPERATOR.TERNARY_RIGHT_RIGHT_RIGHT, name: 'ternary', symbols: [['?',':']]
+      type: OPERATOR.BINARY_LEFT_RIGHT, name: 'assignment', symbols: ['=', '+=', '-=', '*=', '/=', '%=', '&=', '^=', '|=', '<<=', '>>=', '>>>=']
+    ]
+    PAIRS: [
+      name: 'index', symbols: ['[', ']']
+      name: 'arguments', symbols: ['(', ')']
+      name: 'generic', symbols: ['<', '>']
+      name: 'block', symbols: ['{', '}']
+      name: 'string', symbols: ['"', '"']
+      name: 'character', symbols: ["'", "'"]
+      name: 'multi-line comment', symbols: ['/*', '*/']
+      name: 'single-line comment', symbols: ['//'] # no match means until end of line
+      # TODO: heredocs would go here, too, if Java had any
+    ]
+
 
 module.exports =
 class Ast # Parser
@@ -152,22 +183,54 @@ class Ast # Parser
   # group one or more characters into symbols
   # also index possible pairs
   java_symbolizer: (symbol_array) ->
-    #pairables = [
-    #  type: SQUARE_BRACKET.OPEN, line: 1, char: 2, token: TOKEN
-    #  type: SQUARE_BRACKET.CLOSE, line: 2, char: 33, token: TOKEN
-    #]
-    #pairables_by_xy =
-    #  1:
-    #    2: token
-    #  2:
-    #    33: token
-    for symbol in symbol_array
+    pairables = []
+    i = -1
+    len = symbol_array.length
+    next_symbol = ->
+      symbol = symbol_array[i]
       if symbol.hasType SYMBOL.WORD
+        # keywords
         for keyword in SYNTAX.JAVA.KEYWORDS
           if symbol.chars is keyword
             symbol.types.push SYMBOL.KEYWORD
-        #console.log symbol.chars
+            return
+
+        # literals
+        for literal in SYNTAX.JAVA.LITERALS
+          if symbol.chars is literal
+            symbol.types.push SYMBOL.LITERAL
+            return
+
+      else if symbol.hasType SYMBOL.NONWORD
+        # TODO: do something about operators and pairs that are next to each other in the same NONWORD
+        # operators
+        for operator in SYNTAX.JAVA.OPERATORS
+          for chars in operator.symbols
+            if symbol.chars is operator.symbols
+              symbol.types.push SYMBOL.OPERATOR
+              symbol.operator =
+                type: operator.type
+                name: operator.name
+              return
+
+        # pairs
+        for pair in SYNTAX.JAVA.PAIRS
+          for chars, k in pair.symbols
+            # TODO: split symbols into two if we find multiple pairs/operators in the same NONWORD?
+            # how best to do this confidently? hmm... precedence?
+            unless -1 is symbol.chars.indexOf chars
+              symbol.types.push SYMBOL.PAIR # TODO: ensure push stays unique
+              if k is 0 then symbol.types.push SYMBOL.OPEN
+              if k is 1 then symbol.types.push SYMBOL.CLOSE
+              symbol.pair =
+                name: pair.name
+              pairables.push symbol
+              return
+
+    next_symbol() while ++i < len
+
     @pretty_print_symbol_array symbol_array
+    console.log pairables
     return symbol_array
 
   syntaxer: (symbol_array) ->
@@ -179,8 +242,10 @@ class Ast # Parser
   pretty_print_symbol_array: (symbol_array) ->
     process.stdout.write "\n"
     last_line = 1
+    i = 0
     process.stdout.write '( '
     for symbol in symbol_array
+      return if ++i > 50
       types = []; types.push type.enum for type in symbol.types; types = types.join ', '
       toString = -> "(#{symbol.line} #{types} #{JSON.stringify symbol.chars}) "
       if last_line isnt symbol.line
