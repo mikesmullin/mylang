@@ -108,20 +108,20 @@ SYNTAX =
       'transient','try','void','volatile','while']
     LITERALS: ['false','null','true']
     OPERATORS: [
-      type: OPERATOR.UNARY_LEFT, name: 'postfix', symbols: [ '++', '--' ]
-      type: OPERATOR.UNARY_RIGHT, name: 'unary', symbols: ['++', '--', '+', '-', '~', '!']
-      type: OPERATOR.BINARY_LEFT_RIGHT, name: 'multiplicative', symbols: ['*', '/', '%']
-      type: OPERATOR.BINARY_LEFT_RIGHT, name: 'additive', symbols: ['+', '-']
-      type: OPERATOR.BINARY_LEFT_RIGHT, name: 'shift', symbols: ['<<', '>>', '>>>']
-      type: OPERATOR.BINARY_LEFT_RIGHT, name: 'relational', symbols: ['<', '>', '<=', '>=', 'instanceof']
-      type: OPERATOR.BINARY_LEFT_RIGHT, name: 'equality', symbols: ['==', '!=']
-      type: OPERATOR.BINARY_LEFT_RIGHT, name: 'bitwise AND', symbols: ['&']
-      type: OPERATOR.BINARY_LEFT_RIGHT, name: 'bitwise exclusive OR', symbols: ['^']
-      type: OPERATOR.BINARY_LEFT_RIGHT, name: 'bitwise inclusive OR', symbols: ['|']
-      type: OPERATOR.BINARY_LEFT_RIGHT, name: 'logical AND', symbols: ['&&']
-      type: OPERATOR.BINARY_LEFT_RIGHT, name: 'logical OR', symbols: ['||']
-      type: OPERATOR.TERNARY_RIGHT_RIGHT_RIGHT, name: 'ternary', symbols: [['?',':']]
-      type: OPERATOR.BINARY_LEFT_RIGHT, name: 'assignment', symbols: ['=', '+=', '-=', '*=', '/=', '%=', '&=', '^=', '|=', '<<=', '>>=', '>>>=']
+      { type: OPERATOR.UNARY_LEFT, name: 'postfix', symbols: [ '++', '--' ] }
+      { type: OPERATOR.UNARY_RIGHT, name: 'unary', symbols: ['++', '--', '+', '-', '~', '!'] }
+      { type: OPERATOR.BINARY_LEFT_RIGHT, name: 'multiplicative', symbols: ['*', '/', '%'] }
+      { type: OPERATOR.BINARY_LEFT_RIGHT, name: 'additive', symbols: ['+', '-'] }
+      { type: OPERATOR.BINARY_LEFT_RIGHT, name: 'shift', symbols: ['<<', '>>', '>>>'] }
+      { type: OPERATOR.BINARY_LEFT_RIGHT, name: 'relational', symbols: ['<', '>', '<=', '>=', 'instanceof'] }
+      { type: OPERATOR.BINARY_LEFT_RIGHT, name: 'equality', symbols: ['==', '!='] }
+      { type: OPERATOR.BINARY_LEFT_RIGHT, name: 'bitwise AND', symbols: ['&'] }
+      { type: OPERATOR.BINARY_LEFT_RIGHT, name: 'bitwise exclusive OR', symbols: ['^'] }
+      { type: OPERATOR.BINARY_LEFT_RIGHT, name: 'bitwise inclusive OR', symbols: ['|'] }
+      { type: OPERATOR.BINARY_LEFT_RIGHT, name: 'logical AND', symbols: ['&&'] }
+      { type: OPERATOR.BINARY_LEFT_RIGHT, name: 'logical OR', symbols: ['||'] }
+      { type: OPERATOR.TERNARY_RIGHT_RIGHT_RIGHT, name: 'ternary', symbols: [['?',':']] }
+      { type: OPERATOR.BINARY_LEFT_RIGHT, name: 'assignment', symbols: ['=', '+=', '-=', '*=', '/=', '%=', '&=', '^=', '|=', '<<=', '>>=', '>>>='] }
     ]
     PAIRS: [
       { name: 'index', symbols: ['[', ']'] }
@@ -267,12 +267,31 @@ class Ast # Parser
             symbol.pushUniqueType SYMBOL.LITERAL
             return
 
+        # integer
+        if symbol.chars.match /^-?\d+$/
+          symbol.pushUniqueType SYMBOL.NUMBER
+          symbol.pushUniqueType SYMBOL.INTEGER
+          return
+
+        # decimal
+        # TODO: add lookahead to see if next node is non-word CHAR.PERIOD
+        if symbol.chars.match /^-?[\d\.]+$/
+          symbol.pushUniqueType SYMBOL.NUMBER
+          symbol.pushUniqueType SYMBOL.DECIMAL
+          return
+
+        # hexadecimal
+        if symbol.chars.match /^0x[0-9a-fA-F]+$/
+          symbol.pushUniqueType SYMBOL.NUMBER
+          symbol.pushUniqueType SYMBOL.HEX
+          return
+
         # anything else must be
         # identifiers
         symbol.pushUniqueType SYMBOL.IDENTIFIER
 
       else if symbol.hasType SYMBOL.NONWORD
-        console.log "its a nonword"
+        console.log "its a nonword #{symbol.chars}"
         match_symbol = (chars, success_cb) ->
           unless -1 is (p = symbol.chars.indexOf chars) # partial match, at least
             if symbol.chars is chars # full match
@@ -321,7 +340,7 @@ class Ast # Parser
     next_symbol() while ++i < len
 
     @pretty_print_symbol_array symbol_array
-    console.log pairables
+    #console.log pairables
     return symbol_array
 
   syntaxer: (symbol_array) ->
