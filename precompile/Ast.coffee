@@ -36,6 +36,7 @@ class Symbol
   constructor: (@chars, @types, meta={}) ->
     @[k] = v for own k, v of meta
     return
+  # TODO: can probably make these all class members instead of instance members
   pushUniqueType: (v) ->
     @types.push v if -1 is @types.indexOf v
     return
@@ -52,6 +53,7 @@ class Symbol
     middle = @clone @chars.substr index, len
     right = @clone @chars.substr index+len, l-index-len
     arr.splice i, 1, left, middle, right
+    return arr[i+1]
   merge: (arr, i, len) ->
     symbol = arr[i]
     for ii in [i+1..len]
@@ -241,8 +243,11 @@ class Ast # Parser
     len = symbol_array.length
     next_symbol = ->
       symbol = symbol_array[i]
+      # TODO: detect whether we are currently inside of a pair (e.g. string, comment) and ignore if needed
+
       if symbol.hasType SYMBOL.WORD
         # keywords
+        # TODO: validate that keywords have space or pairs around them but not dots--or else its not a keyword
         for keyword in SYNTAX.JAVA.KEYWORDS
           if symbol.chars is keyword
             symbol.pushUniqueType SYMBOL.KEYWORD
@@ -254,34 +259,40 @@ class Ast # Parser
             symbol.pushUniqueType SYMBOL.LITERAL
             return
 
+        symbol.pushUniqueType SYMBOL.IDENTIFIER
+
       else if symbol.hasType SYMBOL.NONWORD
+        match_symbol = (chars, success_cb) ->
+          unless -1 is (p = symbol.chars.indexOf chars) # partial match, at least
+            unless symbol.chars is chars # full match
+              symbol = symbol.split p, chars.length, symbol_array, i
+              --i; return # backup and re-evaluate after split
+            success_cb()
+            return true
+          return false
+
         # statement end
-        # TODO: split symbol
-        unless -1 is (p = symbol.chars.indexOf ';')
+        return if match_symbol ';', ->
           symbol.pushUniqueType SYMBOL.STATEMENT_END
 
         # TODO: do something about operators and pairs that are next to each other in the same NONWORD
         # operators
         for operator in SYNTAX.JAVA.OPERATORS
           for chars in operator.symbols
-            if symbol.chars is operator.symbols
+            return if match_symbol chars, ->
               symbol.pushUniqueType SYMBOL.OPERATOR
               symbol.operator =
                 type: operator.type
                 name: operator.name
-              return
 
         # pairs
         # TODO: use braces pairs to determine symbol level for all symbols inbetween
         for pair in SYNTAX.JAVA.PAIRS
-          console.log symbol.chars
           for chars, k in pair.symbols
-            console.log '   '+chars
-            # TODO: split symbols into two if we find multiple pairs/operators in the same NONWORD?
             # TODO: collapse symbols (e.g. a line_group containing only '@Override' as a NON-SPACE is one symbol plus spacing
             # how best to do this confidently? hmm... precedence? confidence levels with last step being collapse or split?
             # this is probably best moved to the syntaxer step if we cannot decide here
-            unless -1 is symbol.chars.indexOf chars
+            match_symbol chars, ->
               symbol.pushUniqueType SYMBOL.PAIR
               if k is 0 then symbol.pushUniqueType SYMBOL.OPEN
               if k is 1 then symbol.pushUniqueType SYMBOL.CLOSE
@@ -289,7 +300,6 @@ class Ast # Parser
                 name: pair.name
               console.log symbol
               pairables.push symbol
-              next
 
 
     next_symbol() while ++i < len
