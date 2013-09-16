@@ -40,8 +40,11 @@ class Symbol
   pushUniqueType: (v) ->
     @types.push v if -1 is @types.indexOf v
     return
-  hasType: (type) ->
-    return true for _type in @types when  _type.enum is type.enum
+  hasType: (types...) ->
+    for _type in @types
+      for __type in types
+        if _type.enum is __type.enum
+          return true
     return false
   removeType: (type) ->
     for _type, i in @types when _type.enum is type.enum
@@ -89,7 +92,7 @@ class Symbol
 
 # in our system, symbols are like tags; a node can have multiple of them
 # but only a few make sense together
-SYMBOL = new Enum ['LINEBREAK','INDENT','SPACE','WORD','NONWORD','KEYWORD','LETTER',
+SYMBOL = new Enum ['LINEBREAK','INDENT','WHITESPACE','WORD','NONWORD','KEYWORD','LETTER',
   'IDENTIFIER','OPERATOR','STATEMENT_END',
   'LITERAL','STRING','NUMBER','INTEGER','DECIMAL','HEX','REGEX','PUNCTUATION',
   'QUOTE','PARENTHESIS','BRACKET','BRACE','PAIR','OPEN','CLOSE',
@@ -192,7 +195,7 @@ class Ast # Parser
         push_symbol indent_buf, SYMBOL.INDENT, indent_type: indent_type_this_line
         indent_buf = ''
       else if space_buf.length
-        push_symbol space_buf, SYMBOL.SPACE
+        push_symbol space_buf, SYMBOL.WHITESPACE
         space_buf = ''
       return
     slice_line_buf = (num_chars) ->
@@ -252,15 +255,16 @@ class Ast # Parser
     pairables = []
     i = -1
     len = symbol_array.length
-    looking_ahead = false
-    lookahead = (n) ->
-      return new Symbol null, [], {} if looking_ahead # dont recurse
-      looking_ahead = true
+    looking_around = false
+    lookaround = (n) ->
+      return new Symbol null, [], {} if looking_around # dont recurse
+      looking_around = true
       i += n
-      next_symbol()
+      if n > 0
+        next_symbol()
       symbol = symbol_array[i]
       i -= n
-      looking_ahead = false
+      looking_around = false
       return symbol
     next_symbol = =>
       symbol = symbol_array[i]
@@ -270,22 +274,25 @@ class Ast # Parser
       if symbol.hasType SYMBOL.WORD
         console.log 'its a word'
         # keywords
-        # TODO: validate that keywords have space or pairs around them but not dots--or else its not a keyword
-        for keyword in SYNTAX.JAVA.KEYWORDS
-          if symbol.chars is keyword
-            symbol.pushUniqueType SYMBOL.KEYWORD
-            return
+        if ( # can only have whitespace or pairs around them
+          (i is 0 or lookaround(-1).hasType SYMBOL.WHITESPACE, SYMBOL.PAIR) and
+          (i is len or lookaround(1).hasType SYMBOL.WHITESPACE, SYMBOL.PAIR)
+        )
+          for keyword in SYNTAX.JAVA.KEYWORDS
+            if symbol.chars is keyword
+              symbol.pushUniqueType SYMBOL.KEYWORD
+              return
 
-        # literals
-        for literal in SYNTAX.JAVA.LITERALS
-          if symbol.chars is literal
-            symbol.pushUniqueType SYMBOL.LITERAL
-            return
+          # literals
+          for literal in SYNTAX.JAVA.LITERALS
+            if symbol.chars is literal
+              symbol.pushUniqueType SYMBOL.LITERAL
+              return
 
         # number
         if symbol.chars.match /^-?\d+$/
           symbol.pushUniqueType SYMBOL.NUMBER
-          if lookahead(1).chars is '.' and lookahead(2).hasType SYMBOL.NUMBER
+          if lookaround(1).chars is '.' and lookaround(2).hasType SYMBOL.NUMBER
             # merge the next two together
             [symbol, delta] = symbol.merge symbol_array, i, 3
             len += delta
@@ -325,7 +332,6 @@ class Ast # Parser
         return if match_symbol ';', ->
           symbol.pushUniqueType SYMBOL.STATEMENT_END
 
-        # TODO: do something about operators and pairs that are next to each other in the same NONWORD
         # operators
         for operator in SYNTAX.JAVA.OPERATORS
           for chars in operator.symbols
@@ -337,15 +343,8 @@ class Ast # Parser
                 name: operator.name
 
         # pairs
-        # TODO: use braces pairs to determine symbol level for all symbols inbetween
-        # TODO: close to the next pair that is not escaped (e.g., \", or ")" )
-        # TODO: i should probably process pairs first and use lookahead until their mate is found
-        #       in case the middle bits can be excluded from parsing
         for pair in SYNTAX.JAVA.PAIRS
           for chars, k in pair.symbols
-            # TODO: collapse symbols (e.g. a line_group containing only '@Override' as a NON-SPACE is one symbol plus spacing
-            # how best to do this confidently? hmm... precedence? confidence levels with last step being collapse or split?
-            # this is probably best moved to the syntaxer step if we cannot decide here
             return if match_symbol chars, ->
               console.log "found pair #{chars} in #{symbol.chars} at #{i}"
               symbol.pushUniqueType SYMBOL.PAIR
@@ -363,6 +362,19 @@ class Ast # Parser
     return symbol_array
 
   syntaxer: (symbol_array) ->
+    # TODO: use braces pairs to determine symbol level for all symbols inbetween
+    # TODO: close to the next pair that is not escaped (e.g., \", or ")" )
+    # TODO: i should probably process pairs first and use lookahead until their mate is found
+    #       in case the middle bits can be excluded from parsing
+    # TODO: all symbols within a pair should have access to some .parentGroup value so e.g. from within a generic you can find its boundaries and members without parsing
+    #       probably same with a class;
+    # TODO: collapse symbols (e.g. a line_group containing only '@Override' as a NON-SPACE is one symbol plus spacing
+    # how best to do this confidently? hmm... precedence? confidence levels with last step being collapse or split?
+    # this is probably best moved to the syntaxer step if we cannot decide here
+    # TODO: should group by all the logical ways here:
+    #  classes, function, function arguments, generic, index, switch statement, for loop, etc.
+
+
     return {}
 
   pretty_print: ->
