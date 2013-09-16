@@ -58,7 +58,7 @@ class Symbol
     if index > 0
       args.push @clone 0, @chars.substr 0, index # left
     args.push @clone index, @chars.substr index, len # middle
-    if ll = l-index-len > 0
+    if (ll = l-index-len) > 0
       args.push @clone index+len, @chars.substr index+len, ll # right
     Array::splice.apply arr, args
     return [arr[i+1], args.length - 3]
@@ -338,6 +338,9 @@ class Ast # Parser
 
         # pairs
         # TODO: use braces pairs to determine symbol level for all symbols inbetween
+        # TODO: close to the next pair that is not escaped (e.g., \", or ")" )
+        # TODO: i should probably process pairs first and use lookahead until their mate is found
+        #       in case the middle bits can be excluded from parsing
         for pair in SYNTAX.JAVA.PAIRS
           for chars, k in pair.symbols
             # TODO: collapse symbols (e.g. a line_group containing only '@Override' as a NON-SPACE is one symbol plus spacing
@@ -379,3 +382,8 @@ class Ast # Parser
         process.stdout.write " )\n( "
       process.stdout.write toString symbol
     process.stdout.write " )\n"
+
+  # TODO: do statement-at-a-time translation
+  #       moving outside-in from root pairs
+  #       and keeping context of requires in mind OR just recognizing undefined vars and making them @ prefixed
+  translate_to_coffee: (tree) ->
