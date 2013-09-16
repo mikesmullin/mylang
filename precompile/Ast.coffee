@@ -252,11 +252,15 @@ class Ast # Parser
     pairables = []
     i = -1
     len = symbol_array.length
+    looking_ahead = false
     lookahead = (n) ->
+      return new Symbol null, [], {} if looking_ahead # dont recurse
+      looking_ahead = true
       i += n
       next_symbol()
       symbol = symbol_array[i]
       i -= n
+      looking_ahead = false
       return symbol
     next_symbol = =>
       symbol = symbol_array[i]
