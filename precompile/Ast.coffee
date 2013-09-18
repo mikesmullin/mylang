@@ -512,6 +512,7 @@ class Ast # Parser
       req: ''
       mod: ''
       classes: ''
+    ids = {}
 
     i = -1
     len = symbol_array.length
@@ -540,12 +541,15 @@ class Ast # Parser
     next_symbol = =>
       symbol = symbol_array[i]
 
+      if symbol.hasType SYMBOL.IDENTIFIER
+        ids[symbol.chars] = 1 # symbol
+
       # package = module.exports
       if symbol.hasType(SYMBOL.KEYWORD) and
           symbol.chars is 'package' and
           (n = find_next(i, -> @hasType SYMBOL.STATEMENT_END))
         out.mod += "module.exports = # package #{to_string i+1, n-i-2}\n"
-        i = n+1 # skip ahead to next statement
+        i = n # skip ahead to next statement
         return
 
       # import = require
@@ -555,8 +559,25 @@ class Ast # Parser
         file = to_string(i+1, n-i-2)
         [nil..., name] = file.split '.'
         out.req += "#{name} = require '#{file.replace /\./g, '/'}'\n"
-        i = n+1 # skip ahead to next statement
+        i = n # skip ahead to next statement
         return
+
+      # comments
+      if symbol.hasType SYMBOL.COMMENT
+        # multi-line
+        if symbol.hasType SYMBOL.MULTILINE_COMMENT
+          comment = symbol.chars
+            .replace(/^[\t ]*\*\/[\r\n]*/m, '') # bottom
+            .replace(/^[\t ]*\*[\t ]*/mg, '') # middle
+            .replace(/\/\*\*?[\r\n]*/, '') # top
+            .replace(/(^[\r\n]+|[\r\n]+$)/g, '') # trim
+          out.classes += "###\n#{comment}\n###\n\n"
+          return
+        # end-line
+        else if symbol.hasType SYMBOL.ENDLINE_COMMENT
+          comment = symbol.chars.replace(/^\s*\/\/\s*/mg, '')
+          out.classes += "// #{comment}\n\n"
+          return
 
       # TODO: should map levels to lexical scope
       # TODO: should build registry of identifiers and their local scope
@@ -568,6 +589,7 @@ class Ast # Parser
     @pretty_print_symbol_array symbol_array
     out = "#{out.req}\n#{out.mod}\n#{out.classes}\n"
     console.log "--- OUTPUT:------\n\n#{out}"
+    #console.log "--- IDs:-----\n\n", JSON.stringify ids, null, 2
     return out
 
   # TODO: technically these are called tokens
