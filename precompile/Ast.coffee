@@ -416,9 +416,6 @@ class Ast # Parser
 
     return {}
 
-  pretty_print: ->
-    return
-
   pretty_print_symbol_array: (symbol_array) ->
     process.stdout.write "\n"
     last_line = 1
