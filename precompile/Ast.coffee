@@ -576,7 +576,7 @@ class Ast # Parser
         return
 
       # comments
-      if symbol.hasType SYMBOL.COMMENT
+      if symbol.hasType SYMBOL.COMMENT, SYMBOL.SUPPORT
         # multi-line
         if symbol.hasType SYMBOL.MULTILINE_COMMENT
           comment = symbol.chars
@@ -588,7 +588,7 @@ class Ast # Parser
           out.classes += "#{indent()}###\n#{comment}\n#{indent()}###\n\n"
           return
         # end-line
-        else if symbol.hasType SYMBOL.ENDLINE_COMMENT
+        else if symbol.hasType SYMBOL.ENDLINE_COMMENT, SYMBOL.SUPPORT
           comment = symbol.chars.replace(/^\s*\/\/\s*/mg, '')
           out.classes += "#{indent()}// #{comment}\n\n"
           return
@@ -612,6 +612,7 @@ class Ast # Parser
 
       # levels
       level++ if symbol.hasType SYMBOL.LEVEL_INC
+      level-- if symbol.hasType SYMBOL.LEVEL_DEC
 
       # TODO: should map levels to lexical scope
       # TODO: should build registry of identifiers and their local scope
