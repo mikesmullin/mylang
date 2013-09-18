@@ -513,6 +513,9 @@ class Ast # Parser
       mod: ''
       classes: ''
     ids = {}
+    level = 0
+    repeat = (s, n) -> r=''; r+=s while --n >= 0; r
+    indent = -> repeat '  ', level
 
     i = -1
     len = symbol_array.length
@@ -527,6 +530,16 @@ class Ast # Parser
       symbol = symbol_array[i]
       i = old_i
       return symbol
+    find_prev_last = (n,test) ->
+      ii = n
+      last = undefined
+      while --ii < len
+        symbol = symbol_array[ii]
+        if test.call symbol
+          last = ii
+        else
+          return last
+      return false
     find_next = (n,test) ->
       ii = n
       while ++ii < len
@@ -571,13 +584,34 @@ class Ast # Parser
             .replace(/^[\t ]*\*[\t ]*/mg, '') # middle
             .replace(/\/\*\*?[\r\n]*/, '') # top
             .replace(/(^[\r\n]+|[\r\n]+$)/g, '') # trim
-          out.classes += "###\n#{comment}\n###\n\n"
+            .replace(/^/mg, indent()) # indent
+          out.classes += "#{indent()}###\n#{comment}\n#{indent()}###\n\n"
           return
         # end-line
         else if symbol.hasType SYMBOL.ENDLINE_COMMENT
           comment = symbol.chars.replace(/^\s*\/\/\s*/mg, '')
-          out.classes += "// #{comment}\n\n"
+          out.classes += "#{indent()}// #{comment}\n\n"
           return
+
+      # class
+      if symbol.hasType(SYMBOL.KEYWORD) and
+          symbol.chars is 'class' and
+          (p = find_prev_last(i, -> @hasType SYMBOL.WORD)) and
+          (n = find_next(i, -> @hasType SYMBOL.LEVEL_INC))
+        access_mods = []
+        out.classes += "#{indent()}class "
+        for ii in [n..p]
+          if symbol_array[ii].hasType SYMBOL.ACCESS_MODIFIER
+            access_mods.push symbol_array[ii].chars
+          else if symbol_array[ii].chars is 'extends'
+            out.classes += 'extends '
+          else if symbol_array[ii].hasType SYMBOL.IDENTIFIER
+            out.classes += symbol_array[ii].chars + ' '
+        out.classes += "# #{access_mods.join ' '}\n"
+        return
+
+      # levels
+      level++ if symbol.hasType SYMBOL.LEVEL_INC
 
       # TODO: should map levels to lexical scope
       # TODO: should build registry of identifiers and their local scope
@@ -589,7 +623,7 @@ class Ast # Parser
     @pretty_print_symbol_array symbol_array
     out = "#{out.req}\n#{out.mod}\n#{out.classes}\n"
     console.log "--- OUTPUT:------\n\n#{out}"
-    console.log "--- IDs:-----\n\n", JSON.stringify ids, null, 2
+    #console.log "--- IDs:-----\n\n", JSON.stringify ids, null, 2
     return out
 
   # TODO: technically these are called tokens
