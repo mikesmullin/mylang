@@ -1,4 +1,9 @@
-a[1]
-b()
-handleLoginAvailable()
+public class AccountExtension extends AbstractExtension
 {
+  @Override
+  public void init()
+  {
+    ExtensionUtility();
+  }
+}
+

@@ -99,9 +99,9 @@ class Symbol
 SYMBOL = new Enum ['LINEBREAK','INDENT','WHITESPACE','WORD','NONWORD','KEYWORD',
   'LETTER','IDENTIFIER','OPERATOR','STATEMENT_END','LITERAL','STRING','NUMBER',
   'INTEGER','DECIMAL','HEX','REGEX','PUNCTUATION','PARENTHESIS',
-  'SQUARE_BRACKET','ANGLE_BRACKET','BRACE','PAIR','OPEN','CLOSE','INC_LEVEL',
-  'DEC_LEVEL','COMMENT','ENDLINE_COMMENT','MULTILINE_COMMENT',
-  'CALL','INDEX','PARAM','TERMINATOR']
+  'SQUARE_BRACKET','ANGLE_BRACKET','BRACE','PAIR','OPEN','CLOSE',
+  'COMMENT','ENDLINE_COMMENT','MULTILINE_COMMENT',
+  'CALL','INDEX','PARAM','TERMINATOR','LEVEL_INC','LEVEL_DEC']
 
 OPERATOR = new Enum ['UNARY_LEFT','UNARY_RIGHT','BINARY_LEFT_RIGHT',
   'BINARY_LEFT_LEFT','BINARY_RIGHT_RIGHT','TERNARY_RIGHT_RIGHT_RIGHT']
@@ -416,9 +416,6 @@ class Ast # Parser
     next_symbol = =>
       symbol = symbol_array[i]
 
-      # indent / level++
-      # outdent / level--
-
       # param
       if symbol.hasType(SYMBOL.IDENTIFIER) and
           ((n = peek(1)) and n.chars is CHAR.OPEN_PARENTHESIS) and
@@ -444,7 +441,17 @@ class Ast # Parser
         symbol_array[e].pushUniqueType SYMBOL.INDEX
         return
 
-      # terminator
+      # level++
+      if symbol.chars is CHAR.OPEN_BRACE
+        symbol.pushUniqueType SYMBOL.LEVEL_INC
+        return
+
+      # level--
+      if symbol.chars is CHAR.CLOSE_BRACE
+        symbol.pushUniqueType SYMBOL.LEVEL_DEC
+        return
+
+      # terminator (basically the semicolon)
 
 
       # TODO: use braces pairs to determine symbol level for all symbols inbetween
