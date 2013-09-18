@@ -43,6 +43,9 @@ class Symbol
   hasType: (types...) ->
     for _type in @types
       for __type in types
+        if _type is undefined or __type is undefined
+          console.log "called hasType with ", _type: _type, __type: __type, types: types
+          console.trace()
         if _type.enum is __type.enum
           return true
     return false
@@ -138,7 +141,7 @@ SYNTAX =
       { name: 'block', types: [SYMBOL.BRACE], symbols: ['{', '}'] }
       { name: 'arguments', types: [SYMBOL.PARENTHESIS], symbols: ['(', ')'] }
       { name: 'generic', types: [SYMBOL.ANGLE_BRACKET], symbols: ['<', '>'] }
-      { name: 'index', types: [SYMBOL.BRACKET], symbols: ['[', ']'] }
+      { name: 'index', types: [SYMBOL.SQUARE_BRACKET], symbols: ['[', ']'] }
       # TODO: heredocs would go here, too, if Java had any
     ]
 
@@ -418,6 +421,12 @@ class Ast # Parser
         e.pushUniqueType SYMBOL.CALL
 
       # index
+      if symbol.hasType(SYMBOL.IDENTIFIER) and
+          ((n = peek(1)) and n.chars is CHAR.OPEN_BRACKET) and
+          (e = find_next(-> @chars is CHAR.CLOSE_BRACKET))
+        n.pushUniqueType SYMBOL.INDEX
+        e.pushUniqueType SYMBOL.INDEX
+
       # param
 
       # terminator
