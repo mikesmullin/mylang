@@ -102,7 +102,7 @@ SYMBOL = new Enum ['LINEBREAK','INDENT','WORD','NONWORD','KEYWORD',
   'SQUARE_BRACKET','ANGLE_BRACKET','BRACE','PAIR','OPEN','CLOSE',
   'COMMENT','ENDLINE_COMMENT','MULTILINE_COMMENT',
   'CALL','INDEX','PARAM','TERMINATOR','LEVEL_INC','LEVEL_DEC',
-  'ACCESS_MODIFIER', 'TYPE']
+  'ACCESS_MODIFIER', 'TYPE', 'TYPE_CAST']
 
 OPERATOR = new Enum ['UNARY_LEFT','UNARY_RIGHT','BINARY_LEFT_RIGHT',
   'BINARY_LEFT_LEFT','BINARY_RIGHT_RIGHT','TERNARY_RIGHT_RIGHT_RIGHT']
@@ -329,8 +329,11 @@ class Ast # Parser
     len = symbol_array.length
     peek = (n) ->
       old_i = i
-      target_i = i + n
-      next_symbol() while ++i < target_i
+      if n > 0
+        target_i = i + n
+        next_symbol() while ++i < target_i
+      else
+        i += n
       symbol = symbol_array[i]
       i = old_i
       return symbol
@@ -395,8 +398,11 @@ class Ast # Parser
     open_pairs = []
     peek = (n) ->
       old_i = i
-      target_i = i + n
-      next_symbol() while ++i < target_i
+      if n > 0
+        target_i = i + n
+        next_symbol() while ++i < target_i
+      else
+        i += n
       symbol = symbol_array[i]
       i = old_i
       return symbol
@@ -416,11 +422,15 @@ class Ast # Parser
         symbol.pushUniqueType SYMBOL.TYPE
 
       # cast
-      #if symbol.hasType(SYMBOL.IDENTIFIER) and
-      #    (not symbol.hasType(SYMBOL.ACCESS_MODIFIER)) and
-      #    (n = find_next(i, -> @hasType SYMBOL.IDENTIFIER))
-      #    ((n = peek(1)) and n.chars is CHAR.OPEN_PARENTHESIS) and
-      #  symbol.pushUniqueType SYMBOL.TYPE
+      if symbol.hasType(SYMBOL.IDENTIFIER) and
+          ((p = peek(-1)) and p.chars is CHAR.OPEN_PARENTHESIS) and
+          ((n = peek(1)) and n.chars is CHAR.CLOSE_PARENTHESIS)
+        symbol.pushUniqueType SYMBOL.TYPE
+        symbol.pushUniqueType SYMBOL.TYPE_CAST
+        [symbol, delta] = symbol.merge symbol_array, i-1, 3
+        symbol.chars = symbol.chars.substr 1, symbol.chars.length-2
+        symbol.types = [SYMBOL.IDENTIFIER, SYMBOL.TYPE, SYMBOL.TYPE_CAST]
+        len += delta
 
       # param
       if symbol.hasType(SYMBOL.IDENTIFIER) and
