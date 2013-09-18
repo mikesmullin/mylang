@@ -102,7 +102,7 @@ SYMBOL = new Enum ['LINEBREAK','INDENT','WORD','NONWORD','KEYWORD',
   'SQUARE_BRACKET','ANGLE_BRACKET','BRACE','PAIR','OPEN','CLOSE',
   'COMMENT','ENDLINE_COMMENT','MULTILINE_COMMENT',
   'CALL','INDEX','PARAM','TERMINATOR','LEVEL_INC','LEVEL_DEC',
-  'ACCESS_MODIFIER', 'TYPE', 'TYPE_CAST','GENERIC_TYPE']
+  'ACCESS_MODIFIER', 'TYPE', 'TYPE_CAST','GENERIC_TYPE','SUPPORT']
 
 OPERATOR = new Enum ['UNARY_LEFT','UNARY_RIGHT','BINARY_LEFT_RIGHT',
   'BINARY_LEFT_LEFT','BINARY_RIGHT_RIGHT','TERNARY_RIGHT_RIGHT_RIGHT']
@@ -157,7 +157,8 @@ class Ast # Parser
   compile: (file, buf) ->
     symbol_array = @lexer file, buf # distinguish lines, indentation, spacing, words, and non-words
     symbol_array = @symbolizer symbol_array # distinguish keywords, literals, identifiers in source language
-    tree = @java_syntaxer symbol_array # create Abstract Syntax Tree (AST)
+    symbol_array = @java_syntaxer symbol_array # create Abstract Syntax Tree (AST)
+    code = @translate_to_coffee symbol_array
 
   lexer: (file, buf) ->
     c = ''
@@ -491,20 +492,26 @@ class Ast # Parser
 
       # terminator (basically the semicolon)
 
+      # override
+      # INDENT NONWORD "@" IDENTIFIER "Override" LINEBREAK
+      if symbol.chars is 'Override' and
+          ((p = peek(-1)) and p.chars is CHAR.AT)
+        [symbol, delta] = symbol.merge symbol_array, i-1, 2
+        symbol.types = [SYMBOL.SUPPORT]
+        len += delta
+        return
 
       # TODO: use braces pairs to determine symbol level for all symbols inbetween
 
 
     next_symbol() while ++i < len
+    return symbol_array
 
+  translate_to_coffee: (symbol_array) ->
     @pretty_print_symbol_array symbol_array
-    return {}
-
-  translate_to_coffee: (tree) ->
     # TODO: do statement-at-a-time translation
     #       moving outside-in from root pairs
     #       and keeping context of requires in mind OR just recognizing undefined vars and making them @ prefixed
-    # INDENT NONWORD "@" IDENTIFIER "Override" LINEBREAK
     # TODO: should group by all the logical ways here:
     #  classes, function, function arguments, generic, index, switch statement, for loop, etc.
 
