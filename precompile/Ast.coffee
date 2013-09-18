@@ -413,6 +413,13 @@ class Ast # Parser
         symbol = symbol_array[ii]
         return ii if test.call symbol
       return false
+    next_non_space = (n,test) ->
+      ii = n
+      while ++ii < len and
+          (symbol = symbol_array[ii]) and
+          (symbol.hasType SYMBOL.LINEBREAK, SYMBOL.INDENT)
+        ;
+      return if test.call symbol then ii else false
     next_symbol = =>
       symbol = symbol_array[i]
       return if symbol is undefined
@@ -460,7 +467,7 @@ class Ast # Parser
       if symbol.hasType(SYMBOL.IDENTIFIER) and
           ((n = peek(1)) and n.chars is CHAR.OPEN_PARENTHESIS) and
           (e = find_next(i, -> @chars is CHAR.CLOSE_PARENTHESIS)) and
-          ((f = peek(e+1)) and f.chars is CHAR.OPEN_BRACE)
+          (f = next_non_space(e+1, -> @chars is CHAR.OPEN_BRACE))
         n.pushUniqueType SYMBOL.PARAM
         symbol_array[e].pushUniqueType SYMBOL.PARAM
         return
@@ -590,7 +597,7 @@ class Ast # Parser
         # end-line
         else if symbol.hasType SYMBOL.ENDLINE_COMMENT, SYMBOL.SUPPORT
           comment = symbol.chars.replace(/^\s*\/\/\s*/mg, '')
-          out.classes += "#{indent()}// #{comment}\n\n"
+          out.classes += "#{indent()}# #{comment}\n"
           return
 
       # class
@@ -601,13 +608,46 @@ class Ast # Parser
         access_mods = []
         out.classes += "#{indent()}class "
         for ii in [n..p]
-          if symbol_array[ii].hasType SYMBOL.ACCESS_MODIFIER
+          if symbol_array[ii].hasType SYMBOL.ACCESS_MODIFIER, SYMBOL.TYPE
             access_mods.push symbol_array[ii].chars
           else if symbol_array[ii].chars is 'extends'
             out.classes += 'extends '
           else if symbol_array[ii].hasType SYMBOL.IDENTIFIER
             out.classes += symbol_array[ii].chars + ' '
-        out.classes += "# #{access_mods.join ' '}\n"
+        out.classes += "# #{access_mods.reverse().join ' '}\n"
+        return
+
+      # function definition
+      if symbol.hasType(SYMBOL.PARAM) and
+          symbol.hasType(SYMBOL.OPEN) and
+          (p = find_prev_last(i-1, -> @hasType SYMBOL.WORD)) and
+          (n = find_next(i, -> @hasType SYMBOL.LEVEL_INC))
+        # TODO: if function has same name as parent class, rename to 'constructor'
+        param_types = []
+        fn_access_mods = []
+        fn_type = ''
+        params_open = false
+        out.classes += "#{indent()}"
+        for ii in [p..n]
+          s = symbol_array[ii]
+          if s.hasType SYMBOL.TYPE
+            if params_open
+              param_types.push s.chars
+            else
+              fn_type = s.chars
+          else if s.hasType SYMBOL.ACCESS_MODIFIER
+            unless params_open
+              fn_access_mods.push s.chars
+          else if s.hasType(SYMBOL.PARAM) and s.hasType(SYMBOL.OPEN)
+            params_open = true
+          else if s.hasType SYMBOL.IDENTIFIER
+            if params_open
+              out.classes += s.chars + ' '
+            else
+              out.classes += s.chars + ': () -> '
+          else if s.hasType SYMBOL.NONWORD
+            out.classes += s.chars
+        out.classes += "# #{fn_access_mods.reverse().join ' '} (#{param_types.join ': , '}): #{fn_type}\n"
         return
 
       # levels
