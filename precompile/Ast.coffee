@@ -508,7 +508,11 @@ class Ast # Parser
     return symbol_array
 
   translate_to_coffee: (symbol_array) ->
-    out = ''
+    out =
+      req: ''
+      mod: ''
+      classes: ''
+
     i = -1
     len = symbol_array.length
     open_pairs = []
@@ -537,9 +541,20 @@ class Ast # Parser
       symbol = symbol_array[i]
 
       # package = module.exports
-      if symbol.chars is 'package' and
+      if symbol.hasType(SYMBOL.KEYWORD) and
+          symbol.chars is 'package' and
           (n = find_next(i, -> @hasType SYMBOL.STATEMENT_END))
-        out += "module.exports = # package #{to_string i+1, n-i-2}\n"
+        out.mod += "module.exports = # package #{to_string i+1, n-i-2}\n"
+        i = n+1 # skip ahead to next statement
+        return
+
+      # import = require
+      if symbol.hasType(SYMBOL.KEYWORD) and
+          symbol.chars is 'import' and
+          (n = find_next(i, -> @hasType SYMBOL.STATEMENT_END))
+        file = to_string(i+1, n-i-2)
+        [nil..., name] = file.split '.'
+        out.req += "#{name} = require '#{file.replace /\./g, '/'}'\n"
         i = n+1 # skip ahead to next statement
         return
 
@@ -550,8 +565,9 @@ class Ast # Parser
 
     next_symbol() while ++i < len
 
-    #@pretty_print_symbol_array symbol_array
-    console.log "OUTPUT:\n\n", out
+    @pretty_print_symbol_array symbol_array
+    out = "#{out.req}\n#{out.mod}\n#{out.classes}\n"
+    console.log "--- OUTPUT:------\n\n#{out}"
     return out
 
   # TODO: technically these are called tokens
