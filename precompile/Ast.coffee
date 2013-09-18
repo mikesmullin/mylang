@@ -95,7 +95,7 @@ class Symbol
 # but only a few make sense together
 SYMBOL = new Enum ['LINEBREAK','INDENT','WHITESPACE','WORD','NONWORD','KEYWORD',
   'LETTER','IDENTIFIER','OPERATOR','STATEMENT_END','LITERAL','STRING','NUMBER',
-  'INTEGER','DECIMAL','HEX','REGEX','PUNCTUATION','QUOTE','PARENTHESIS',
+  'INTEGER','DECIMAL','HEX','REGEX','PUNCTUATION','PARENTHESIS',
   'SQUARE_BRACKET','ANGLE_BRACKET','BRACE','PAIR','OPEN','CLOSE','INC_LEVEL',
   'DEC_LEVEL','COMMENT','ENDLINE_COMMENT','MULTILINE_COMMENT']
 
@@ -132,8 +132,8 @@ SYNTAX =
     PAIRS: [ # ordered by precendence
       { name: 'multi-line comment', types: [SYMBOL.COMMENT, SYMBOL.MULTILINE_COMMENT], symbols: ['/*', '*/'] }
       { name: 'single-line comment', types: [SYMBOL.COMMENT, SYMBOL.ENDLINE_COMMENT], symbols: ['//'] } # no match means until end of line
-      { name: 'string', types: [SYMBOL.QUOTE, SYMBOL.STRING], symbols: ['"', '"'] }
-      { name: 'character', types: [SYMBOL.QUOTE, SYMBOL.STRING], symbols: ["'", "'"] }
+      { name: 'string', types: [SYMBOL.STRING], symbols: ['"', '"'] , escaped_by: '\\'}
+      { name: 'character', types: [SYMBOL.STRING], symbols: ["'", "'"] , escaped_by: '\\'}
       { name: 'block', types: [SYMBOL.BRACE], symbols: ['{', '}'] }
       { name: 'arguments', types: [SYMBOL.PARENTHESIS], symbols: ['(', ')'] }
       { name: 'generic', types: [SYMBOL.ANGLE_BRACKET], symbols: ['<', '>'] }
@@ -152,11 +152,11 @@ class Ast # Parser
     return
 
   compile: (file, buf) ->
-    symbol_array = @lexer buf # distinguish lines, indentation, spacing, words, and non-words
-    symbol_array = @java_symbolizer symbol_array # distinguish keywords, operators, identifiers in source language
+    symbol_array = @lexer file, buf # distinguish lines, indentation, spacing, words, and non-words
+    symbol_array = @symbolizer symbol_array # distinguish keywords, literals, identifiers in source language
     tree = @syntaxer symbol_array # create Abstract Syntax Tree (AST)
 
-  lexer: (buf) ->
+  lexer: (file, buf) ->
     c = ''
     len = buf.length # number
     byte = 1 # buffer cursor
@@ -172,6 +172,12 @@ class Ast # Parser
     word_on_this_line = false
     indent_type_this_line = undefined
 
+    throwError = (msg) -> throw new Error "#{file}:#{line}:#{char}: #{msg}"
+    peek = (n, l=1) -> buf.substr zbyte+n, l
+    is_eol = (i) ->
+      return if buf[i] is CHAR.CR and buf[i+1] is CHAR.LF then 2 # windows
+      else if buf[i] is CHAR.CR or buf[i] is CHAR.LF then 1 # mac or linux
+      else false
     push_symbol = (chars, symbol, meta={}) ->
       meta.line = line; meta.char = char - chars.length; meta.byte = byte - chars.length
       symbol_array.push new Symbol chars, [symbol], meta
@@ -205,22 +211,70 @@ class Ast # Parser
         push_symbol buf.substr(zbyte,num_chars), SYMBOL.LINEBREAK
         line++
         char = 0
-        zbyte += num_chars-1
+        zbyte += num_chars-1 # skip ahead
         word_on_this_line = false
         indent_type_this_line = undefined
       return
+    is_pair = ->
+      for pair in SYNTAX.JAVA.PAIRS
+        for search, k in pair.symbols
+          if search is peek 0, search.length
+            console.log "found pair \"#{search}\" at line #{line}, char #{char}, byte #{byte}"
+            symbol = new Symbol search, [SYMBOL.PAIR], line: line, char: char, byte: byte, pair: name: pair.name
+            symbol.pushUniqueType type for type in pair.types
 
-    peekahead = (n) -> buf[zbyte+n]
+            # some pairs require that we find their endings immediately
+            # e.g., comments
+            if symbol.hasType SYMBOL.COMMENT
+              if pair.symbols.length is 1 # no ending symbol means match to EOL
+                x = zbyte; while ++x < len and false is is_eol(x) # EOL or EOF whichever is first
+                  ;
+                symbol.chars = buf.substr zbyte, x-zbyte
+                return [symbol, x-zbyte]
+              else
+                # finds end of pairs where nothing inbetween is allowed and the end cannot be escaped
+                if -1 isnt x = buf.indexOf pair.symbols[1], zbyte + search.length + pair.symbols[1].length
+                  symbol.chars = buf.substr zbyte, x-zbyte+pair.symbols[1].length
+                  return [symbol, x-zbyte+pair.symbols[1].length]
+                else
+                  throwError "unmatched comment pair \"#{search}\""
+
+            # e.g., strings
+            if symbol.hasType SYMBOL.STRING
+              # finds end of pairs where nothing inbetween is allowed but the ending can be escaped; e.g., strings
+              find_end_of_escaped_pair = (buf, start, match, escape) ->
+                i = start
+                while -1 isnt (i = buf.indexOf match, i+match.length)
+                  unless escape and buf[i-escape.length] is escape
+                    return i
+                return -1
+              if -1 isnt x = find_end_of_escaped_pair buf, zbyte+1, pair.symbols[1], pair.escaped_by
+                symbol.chars = buf.substr zbyte, x-zbyte+1
+                return [symbol, x-zbyte+1]
+              else
+                throwError "unmatched string pair \"#{search}\""
+
+            # remaining pairs dont require us to find the ending
+            # so we just mark them with separate opening and closing symbols
+            symbol.pushUniqueType SYMBOL.OPEN if k is 0 or pair.symbols[0] is pair.symbols[1]
+            symbol.pushUniqueType SYMBOL.CLOSE if k is 1 or pair.symbols[0] is pair.symbols[1]
+            return [symbol, search.length]
+    is_operator = ->
+      for operator in SYNTAX.JAVA.OPERATORS
+        for search in operator.symbols
+          if search is peek 0, search.length
+            console.log "found symbol \"#{search}\" at line #{line}, char #{char}, byte #{byte}"
+            symbol = new Symbol search, [SYMBOL.OPERATOR], line: line, char: char, byte: byte, operator: type: operator.type, name: operator.name
+            return [symbol, search.length]
+      return false
+
     while ++zbyte < len # iterate every character in buffer
       c = buf[zbyte]
       byte = zbyte + 1
       ++char
 
       # slice on win/mac/unix line-breaks
-      if c is CHAR.CR and peekahead(1) is CHAR.LF # windows
-        slice_line_buf 2
-      else if c is CHAR.CR or c is CHAR.LF # mac or linux
-        slice_line_buf 1
+      if x = is_eol(zbyte) then slice_line_buf x
 
       # slice on whitespace
       else if c is CHAR.SPACE or c is CHAR.TAB # whitespace
@@ -242,6 +296,25 @@ class Ast # Parser
           word_buf += c
         else # non-word character
           slice_word_buf()
+
+          if r = is_pair()
+            [symbol, x] = r
+            symbol_array.push symbol
+            zbyte += x-1 # skip ahead
+            continue
+
+          # terminator
+          if c is CHAR.SEMICOLON
+            symbol_array.push new Symbol c, [SYMBOL.STATEMENT_END], line: line, char: char, byte: byte
+            continue
+
+          # operators
+          if r = is_operator()
+            [symbol, x] = r
+            symbol_array.push symbol
+            zbyte += x-1 # skip ahead
+            continue
+
           nonword_buf += c
 
     slice_line_buf()
@@ -249,30 +322,24 @@ class Ast # Parser
 
   # group one or more characters into symbols
   # also index possible pairs
-  java_symbolizer: (symbol_array) ->
+  symbolizer: (symbol_array) ->
     i = -1
     len = symbol_array.length
     open_pairs = []
     lookaround = (n) ->
-      console.log ">>> BEGIN LOOK #{i} + #{n}"
       old_i = i
       target_i = i + n
       while i < target_i
         i++
-        console.log "I IS NOW #{i}"
         next_symbol()
       symbol = symbol_array[i]
-      console.log "symbol #{i} is #{JSON.stringify symbol}"
       i = old_i
-      console.log "<< RETURN LOOK #{i} + #{n}"
       return symbol
     next_symbol = =>
       symbol = symbol_array[i]
-      console.log "i is #{i}"
       # TODO: detect whether we are currently inside of a pair (e.g. string, comment) and ignore if needed
 
       if symbol.hasType SYMBOL.WORD
-        console.log 'its a word'
         # keywords
         if ( # can only have whitespace or pairs around them
           (i is 0 or lookaround(-1).hasType SYMBOL.WHITESPACE, SYMBOL.PAIR) and
@@ -314,110 +381,10 @@ class Ast # Parser
         symbol.pushUniqueType SYMBOL.IDENTIFIER
 
       else if symbol.hasType SYMBOL.NONWORD
-        console.log "its a nonword #{symbol.chars}"
-        match_symbol = (chars, success_cb) ->
-          unless -1 is (p = symbol.chars.indexOf chars) # partial match, at least
-            if symbol.chars is chars # full match
-              success_cb()
-            else
-              console.log "found symbol \"#{chars}\" in \"#{symbol.chars}\""
-              [symbol, delta] = symbol.split p, chars.length, symbol_array, i
-              len += delta # resize length
-              console.log "and adjusted len by +#{delta}"
-              --i # backup and re-evaluate since we split
-            return true
-          return false
-
-        # pairs
-        for pair in SYNTAX.JAVA.PAIRS
-          for chars, k in pair.symbols
-            return if match_symbol chars, ->
-              console.log "found pair #{chars} in #{symbol.chars} at #{i}"
-              symbol.pushUniqueType SYMBOL.PAIR
-              for type in pair.types
-                symbol.pushUniqueType type
-
-              # some pairs require that we find their endings immediately
-              # comments
-              if symbol.hasType SYMBOL.COMMENT
-                if symbol.hasType SYMBOL.ENDLINE_COMMENT
-                  # find_eol_or_eof
-                  ii = 0
-                  while ++ii < len
-                    sym = lookahead ii
-                    if sym.hasType SYMBOL.LINEBREAK
-                      # found ending
-                      break
-                  # merge symbols inbetween
-                  [symbol, delta] = symbol.merge symbol_array, i, ii
-                  len += delta
-                  return
-
-                else if symbol.hasType SYMBOL.MULTILINE_COMMENT
-                  # find end of comment
-
-
-              # strings
-              if symbol.hasType SYMBOL.STRING
-                # find end of string
-                1
-
-              # all other pairs we just turn each end into a symbol
-              # and provide context if we can
-              # TODO: determine type of opener by surroundings
-              #     openers preceeded by identifiers are types of _START
-              # closers are based on last opener
-
-              # same symbol used to both open and close
-              if pair.symbols[0] is pair.symbols[1]
-                symbol.pushUniqueType SYMBOL.OPEN
-                symbol.pushUniqueType SYMBOL.CLOSE
-              # distinct opening symbol
-              else if k is 0
-                symbol.pushUniqueType SYMBOL.OPEN
-              # distinct closing symbol
-              else if k is 1
-                symbol.pushUniqueType SYMBOL.CLOSE
-              symbol.pair = name: pair.name
-              pairables.push symbol
-
-              if k is 0 and symbol.hasType(SYMBOL.STRING, SYMBOL.COMMENT) and
-                # everything inbetween these symbols can be merged into a single symbol
-                # so its best to find the ending pair of these types right away
-                # just lookahead to until we find the next unescaped occurrence
-                ii = 0
-                found = false
-                console.log "SEARCHING FOR MATE TO #{chars}... WHICH LOOKS LIKE #{pair.symbols[1]}"
-                while ++ii < len-i
-                  s = lookaround ii
-                  console.log ""
-                  console.log "+++ HAVE LOOKED FROM #{i} TO +#{ii} FINDING #{JSON.stringify s}"
-                  if s.hasType(SYMBOL.PAIR) and
-                      s.hasType(SYMBOL.CLOSE) and
-                      (s.chars is pair.symbols[1] or pair.symbols[1] is undefined)
-                    console.log 'THIS SATISFIES ME', JSON.stringify s
-                    found = true
-                    console.log "will merge from #{i} +#{ii+1}"
-                    # commence symbol merge
-                    [symbol, delta] = symbol.merge symbol_array, i, ii+1
-                    len += delta
-                    break
-                unless found
-                  throw "FATAL: unmatched pair \"#{symbol.chars}\" found at #{symbol.line}:#{symbol.char}."
-
-        # statement end
-        return if match_symbol ';', ->
-          symbol.pushUniqueType SYMBOL.STATEMENT_END
-
-        # operators
-        for operator in SYNTAX.JAVA.OPERATORS
-          for chars in operator.symbols
-            return if match_symbol chars, ->
-              console.log "found symbol #{chars} in #{symbol.chars}"
-              symbol.pushUniqueType SYMBOL.OPERATOR
-              symbol.operator =
-                type: operator.type
-                name: operator.name
+        1
+        # TODO: later, determine type of opener by surroundings
+        #       openers preceeded by identifiers are types of _START
+        #       closers are based on last opener
 
     next_symbol() while ++i < len
 
@@ -447,7 +414,7 @@ class Ast # Parser
     for symbol, i in symbol_array
       return if i > 80
       types = []; types.push type.enum for type in symbol.types; types = types.join ', '
-      toString = -> "(#{i} #{types} #{JSON.stringify symbol.chars}) "
+      toString = -> "(#{i}:#{symbol.line}:#{symbol.char} #{types} #{JSON.stringify symbol.chars}) "
       if last_line isnt symbol.line
         last_line = symbol.line
         process.stdout.write " )\n( "
