@@ -112,7 +112,7 @@ SYNTAX =
   JAVA: # proprietary to java
     KEYWORDS:
       STATEMENTS: ['case','catch','continue','default','do','else','for','if','finally','goto','return','switch','try','while','throw']
-      ACCESS_MODIFIERS: ['abstract','const','private','protected','public','static','synchronized','transient','volatile']
+      ACCESS_MODIFIERS: ['abstract','const','private','protected','public','static','synchronized','transient','volatile','final']
       TYPES: ['boolean','double','char','float','int','long','short','void']
       OTHER: ['class','new','import','package','super','this','enum','implements','extends','instanceof','interface','native','strictfp','throws']
     LITERALS: ['false','null','true']
@@ -589,7 +589,7 @@ class Ast # Parser
     @pretty_print_symbol_array symbol_array
     out = "#{out.req}\n#{out.mod}\n#{out.classes}\n"
     console.log "--- OUTPUT:------\n\n#{out}"
-    #console.log "--- IDs:-----\n\n", JSON.stringify ids, null, 2
+    console.log "--- IDs:-----\n\n", JSON.stringify ids, null, 2
     return out
 
   # TODO: technically these are called tokens
