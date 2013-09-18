@@ -97,7 +97,8 @@ SYMBOL = new Enum ['LINEBREAK','INDENT','WHITESPACE','WORD','NONWORD','KEYWORD',
   'LETTER','IDENTIFIER','OPERATOR','STATEMENT_END','LITERAL','STRING','NUMBER',
   'INTEGER','DECIMAL','HEX','REGEX','PUNCTUATION','PARENTHESIS',
   'SQUARE_BRACKET','ANGLE_BRACKET','BRACE','PAIR','OPEN','CLOSE','INC_LEVEL',
-  'DEC_LEVEL','COMMENT','ENDLINE_COMMENT','MULTILINE_COMMENT']
+  'DEC_LEVEL','COMMENT','ENDLINE_COMMENT','MULTILINE_COMMENT',
+  'CALL','INDEX','PARAM','TERMINATOR']
 
 OPERATOR = new Enum ['UNARY_LEFT','UNARY_RIGHT','BINARY_LEFT_RIGHT',
   'BINARY_LEFT_LEFT','BINARY_RIGHT_RIGHT','TERNARY_RIGHT_RIGHT_RIGHT']
@@ -154,7 +155,7 @@ class Ast # Parser
   compile: (file, buf) ->
     symbol_array = @lexer file, buf # distinguish lines, indentation, spacing, words, and non-words
     symbol_array = @symbolizer symbol_array # distinguish keywords, literals, identifiers in source language
-    tree = @syntaxer symbol_array # create Abstract Syntax Tree (AST)
+    tree = @java_syntaxer symbol_array # create Abstract Syntax Tree (AST)
 
   lexer: (file, buf) ->
     c = ''
@@ -324,8 +325,7 @@ class Ast # Parser
   symbolizer: (symbol_array) ->
     i = -1
     len = symbol_array.length
-    open_pairs = []
-    lookaround = (n) ->
+    peek = (n) ->
       old_i = i
       target_i = i + n
       while i < target_i
@@ -336,13 +336,11 @@ class Ast # Parser
       return symbol
     next_symbol = =>
       symbol = symbol_array[i]
-      # TODO: detect whether we are currently inside of a pair (e.g. string, comment) and ignore if needed
-
       if symbol.hasType SYMBOL.WORD
         # keywords
         if ( # can only have whitespace or pairs around them
-          (i is 0 or lookaround(-1).hasType SYMBOL.WHITESPACE, SYMBOL.PAIR) and
-          (i is len or lookaround(1).hasType SYMBOL.WHITESPACE, SYMBOL.PAIR)
+          (i is 0 or peek(-1).hasType SYMBOL.WHITESPACE, SYMBOL.PAIR) and
+          (i is len or peek(1).hasType SYMBOL.WHITESPACE, SYMBOL.PAIR)
         )
           for keyword in SYNTAX.JAVA.KEYWORDS
             if symbol.chars is keyword
@@ -358,7 +356,7 @@ class Ast # Parser
         # number
         if symbol.chars.match /^-?\d+$/
           symbol.pushUniqueType SYMBOL.NUMBER
-          if lookaround(1).chars is '.' and lookaround(2).hasType SYMBOL.NUMBER
+          if peek(1).chars is '.' and peek(2).hasType SYMBOL.NUMBER
             # merge the next two together
             [symbol, delta] = symbol.merge symbol_array, i, 3
             len += delta
@@ -386,27 +384,62 @@ class Ast # Parser
         #       closers are based on last opener
 
     next_symbol() while ++i < len
-
-    @pretty_print_symbol_array symbol_array
-    #console.log pairables
     return symbol_array
 
-  syntaxer: (symbol_array) ->
-    # TODO: use braces pairs to determine symbol level for all symbols inbetween
-    # TODO: close to the next pair that is not escaped (e.g., \", or ")" )
-    # TODO: i should probably process pairs first and use lookahead until their mate is found
-    #       in case the middle bits can be excluded from parsing
-    # TODO: all symbols within a pair should have access to some .parentGroup value so e.g. from within a generic you can find its boundaries and members without parsing
-    #       probably same with a class;
-    # TODO: collapse symbols (e.g. a line_group containing only '@Override' as a NON-SPACE is one symbol plus spacing
-    # how best to do this confidently? hmm... precedence? confidence levels with last step being collapse or split?
-    # this is probably best moved to the syntaxer step if we cannot decide here
+  java_syntaxer: (symbol_array) ->
+    i = -1
+    len = symbol_array.length
+    open_pairs = []
+    peek = (n) ->
+      old_i = i
+      target_i = i + n
+      console.log "peek", n: n, i: i, old_i: old_i, target_i: target_i
+      next_symbol() while ++i < target_i
+      symbol = symbol_array[i]
+      i = old_i
+      return symbol
+    find_next = (test) ->
+      ii = i
+      while ++ii < len
+        symbol = symbol_array[ii]
+        return symbol if test.call symbol
+      return false
+    next_symbol = =>
+      symbol = symbol_array[i]
+
+      # indent / level++
+      # outdent / level--
+
+      # call
+      if symbol.hasType(SYMBOL.IDENTIFIER) and
+          ((n = peek(1)) and n.chars is CHAR.OPEN_PARENTHESIS) and
+          (e = find_next(-> @chars is CHAR.CLOSE_PARENTHESIS))
+        n.pushUniqueType SYMBOL.CALL
+        e.pushUniqueType SYMBOL.CALL
+
+      # index
+      # param
+
+      # terminator
+
+
+      # TODO: use braces pairs to determine symbol level for all symbols inbetween
+
+
+    next_symbol() while ++i < len
+
+    @pretty_print_symbol_array symbol_array
+    return {}
+
+  translate_to_coffee: (tree) ->
+    # TODO: do statement-at-a-time translation
+    #       moving outside-in from root pairs
+    #       and keeping context of requires in mind OR just recognizing undefined vars and making them @ prefixed
+    # INDENT NONWORD "@" IDENTIFIER "Override" LINEBREAK
     # TODO: should group by all the logical ways here:
     #  classes, function, function arguments, generic, index, switch statement, for loop, etc.
 
-
-    return {}
-
+  # TODO: technically these are called tokens
   pretty_print_symbol_array: (symbol_array) ->
     process.stdout.write "\n"
     last_line = 1
@@ -419,8 +452,3 @@ class Ast # Parser
         process.stdout.write " )\n( "
       process.stdout.write toString symbol
     process.stdout.write "\n"
-
-  # TODO: do statement-at-a-time translation
-  #       moving outside-in from root pairs
-  #       and keeping context of requires in mind OR just recognizing undefined vars and making them @ prefixed
-  translate_to_coffee: (tree) ->
