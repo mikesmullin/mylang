@@ -415,11 +415,12 @@ class Ast # Parser
       return false
     next_symbol = =>
       symbol = symbol_array[i]
+      return if symbol is undefined
 
       # type
       if symbol.hasType(SYMBOL.IDENTIFIER) and
           (not symbol.hasType(SYMBOL.ACCESS_MODIFIER)) and
-          ((n = peek(1)) and n.hasType is SYMBOL.IDENTIFIER)
+          ((n = peek(1)) and n.hasType SYMBOL.IDENTIFIER)
         symbol.pushUniqueType SYMBOL.TYPE
 
       # cast
@@ -493,7 +494,6 @@ class Ast # Parser
       # terminator (basically the semicolon)
 
       # override
-      # INDENT NONWORD "@" IDENTIFIER "Override" LINEBREAK
       if symbol.chars is 'Override' and
           ((p = peek(-1)) and p.chars is CHAR.AT)
         [symbol, delta] = symbol.merge symbol_array, i-1, 2
@@ -508,19 +508,58 @@ class Ast # Parser
     return symbol_array
 
   translate_to_coffee: (symbol_array) ->
-    @pretty_print_symbol_array symbol_array
-    # TODO: do statement-at-a-time translation
-    #       moving outside-in from root pairs
-    #       and keeping context of requires in mind OR just recognizing undefined vars and making them @ prefixed
-    # TODO: should group by all the logical ways here:
-    #  classes, function, function arguments, generic, index, switch statement, for loop, etc.
+    out = ''
+    i = -1
+    len = symbol_array.length
+    open_pairs = []
+    peek = (n) ->
+      old_i = i
+      if n > 0
+        target_i = i + n
+        next_symbol() while ++i < target_i
+      else
+        i += n
+      symbol = symbol_array[i]
+      i = old_i
+      return symbol
+    find_next = (n,test) ->
+      ii = n
+      while ++ii < len
+        symbol = symbol_array[ii]
+        return ii if test.call symbol
+      return false
+    to_string = (start, len) ->
+      words = []
+      for ii in [start..start+len]
+        words.push symbol_array[ii].chars
+      words.join ''
+    next_symbol = =>
+      symbol = symbol_array[i]
+
+      # package = module.exports
+      if symbol.chars is 'package' and
+          (n = find_next(i, -> @hasType SYMBOL.STATEMENT_END))
+        out += "module.exports = # package #{to_string i+1, n-i-2}\n"
+        i = n+1 # skip ahead to next statement
+        return
+
+      # TODO: should map levels to lexical scope
+      # TODO: should build registry of identifiers and their local scope
+      # TODO: should group by all the logical ways here:
+      #  classes, function, function arguments, generic, index, switch statement, for loop, etc.
+
+    next_symbol() while ++i < len
+
+    #@pretty_print_symbol_array symbol_array
+    console.log "OUTPUT:\n\n", out
+    return out
 
   # TODO: technically these are called tokens
   pretty_print_symbol_array: (symbol_array) ->
     process.stdout.write "\n"
     last_line = 1
     for symbol, i in symbol_array
-      return if i > 80
+      #return if i > 80
       types = []; types.push type.enum for type in symbol.types; types = types.join ', '
       toString = -> "(#{i}:#{symbol.line}:#{symbol.char} #{types} #{JSON.stringify symbol.chars}) "
       if last_line isnt symbol.line
