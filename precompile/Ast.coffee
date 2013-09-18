@@ -102,7 +102,7 @@ SYMBOL = new Enum ['LINEBREAK','INDENT','WORD','NONWORD','KEYWORD',
   'SQUARE_BRACKET','ANGLE_BRACKET','BRACE','PAIR','OPEN','CLOSE',
   'COMMENT','ENDLINE_COMMENT','MULTILINE_COMMENT',
   'CALL','INDEX','PARAM','TERMINATOR','LEVEL_INC','LEVEL_DEC',
-  'ACCESS_MODIFIER', 'TYPE', 'TYPE_CAST']
+  'ACCESS_MODIFIER', 'TYPE', 'TYPE_CAST','GENERIC_TYPE']
 
 OPERATOR = new Enum ['UNARY_LEFT','UNARY_RIGHT','BINARY_LEFT_RIGHT',
   'BINARY_LEFT_LEFT','BINARY_RIGHT_RIGHT','TERNARY_RIGHT_RIGHT_RIGHT']
@@ -431,6 +431,28 @@ class Ast # Parser
         symbol.chars = symbol.chars.substr 1, symbol.chars.length-2
         symbol.types = [SYMBOL.IDENTIFIER, SYMBOL.TYPE, SYMBOL.TYPE_CAST]
         len += delta
+        return
+
+      # generics
+      if symbol.hasType(SYMBOL.IDENTIFIER) and
+          ((p = peek(-1)) and p.chars is CHAR.LESS)
+        if peek(1).chars is CHAR.GREATER
+          peek(-2).pushUniqueType SYMBOL.TYPE
+          # merge i-1 to i+1
+          [symbol, delta] = symbol.merge symbol_array, i-2, 4
+          symbol.types = [SYMBOL.TYPE, SYMBOL.GENERIC_TYPE]
+          len += delta
+          return
+        else
+          ii = i+1
+          ii+=2 while symbol_array[ii].chars is CHAR.COMMA and
+              symbol_array[ii+1].hasType SYMBOL.IDENTIFIER
+          if symbol_array[ii].chars is CHAR.GREATER
+            # merge i-1 to ii
+            [symbol, delta] = symbol.merge symbol_array, i-2, ii-i+3
+            symbol.types = [SYMBOL.TYPE, SYMBOL.GENERIC_TYPE]
+            len += delta
+            return
 
       # param
       if symbol.hasType(SYMBOL.IDENTIFIER) and
