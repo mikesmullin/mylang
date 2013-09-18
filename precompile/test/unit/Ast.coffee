@@ -76,6 +76,37 @@ describe 'Ast', ->
     console.log buf.substr e-2, 4
 
   it.only 'can build level hierearchy from pairs like ( [ { } ] )', ->
+    buf = '''
+    hello ( a ( b
+      [ c
+      { d e } f ] g ) h ) i
+    '''
+
+    console.log buf
+    console.log '---'
+
+    # allocates pairs into block levels
+    pairs = [
+      ['{','}'],
+      ['(',')'],
+      ['[',']']
+    ]
+    # TODO: ensure comments and strings are matched first so all that is left are these type of pairs
+    # find pairs that cannot be escaped but can recurse
+    # return an array or object representing their hierarchy w/ data inbetween
+    match_pairs = (buf, start, pairs) ->
+      matches = {}
+      i = start-1
+      # TODO: use regex replace here instead? so starts and ends can be dynamically sized from the start?
+      # TODO: build new RegExp from string array keys join '|'
+      while ++i < buf.length
+        # TODO: later we can add multi-char support for other languages like %q( but for now we can rely on single-char pairs
+
+
+        return buf.indexOf match, start+match.length
+
+    console.log e = find_end_of_pair buf, 4, '*/'
+    console.log buf.substr e-2, 4
 
 
   it 'can open and compile a file', (done) ->
