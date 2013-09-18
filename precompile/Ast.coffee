@@ -422,7 +422,6 @@ class Ast # Parser
   pretty_print_symbol_array: (symbol_array) ->
     process.stdout.write "\n"
     last_line = 1
-    process.stdout.write '( '
     for symbol, i in symbol_array
       return if i > 80
       types = []; types.push type.enum for type in symbol.types; types = types.join ', '
@@ -431,7 +430,7 @@ class Ast # Parser
         last_line = symbol.line
         process.stdout.write " )\n( "
       process.stdout.write toString symbol
-    process.stdout.write " )\n"
+    process.stdout.write "\n"
 
   # TODO: do statement-at-a-time translation
   #       moving outside-in from root pairs

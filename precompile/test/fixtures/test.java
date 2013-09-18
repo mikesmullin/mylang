@@ -1,3 +1,1 @@
-public class A {
-  public static String TEST = "hello";
-}
+TEST = "hello";
