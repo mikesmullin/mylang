@@ -396,7 +396,6 @@ class Ast # Parser
     peek = (n) ->
       old_i = i
       target_i = i + n
-      console.log "peek", n: n, i: i, old_i: old_i, target_i: target_i
       next_symbol() while ++i < target_i
       symbol = symbol_array[i]
       i = old_i
@@ -405,29 +404,45 @@ class Ast # Parser
       ii = i
       while ++ii < len
         symbol = symbol_array[ii]
-        return symbol if test.call symbol
+        return ii if test.call symbol
       return false
+    next_ignoring_whitespace = (i, test) ->
+      ii = i
+      while ++ii < len and
+          (symbol = symbol_array[ii]) and
+          (symbol.hasType SYMBOL.WHITESPACE, SYMBOL.LINEBREAK, SYMBOL.INDENT)
+        ;
+      return if test.call(symbol) then ii else false
     next_symbol = =>
       symbol = symbol_array[i]
 
       # indent / level++
       # outdent / level--
 
+      # param
+      if symbol.hasType(SYMBOL.IDENTIFIER) and
+          ((n = peek(1)) and n.chars is CHAR.OPEN_PARENTHESIS) and
+          (e = find_next(-> @chars is CHAR.CLOSE_PARENTHESIS)) and
+          (f = next_ignoring_whitespace(e, -> @chars is CHAR.OPEN_BRACE))
+        n.pushUniqueType SYMBOL.PARAM
+        symbol_array[e].pushUniqueType SYMBOL.PARAM
+        return
+
       # call
       if symbol.hasType(SYMBOL.IDENTIFIER) and
           ((n = peek(1)) and n.chars is CHAR.OPEN_PARENTHESIS) and
           (e = find_next(-> @chars is CHAR.CLOSE_PARENTHESIS))
         n.pushUniqueType SYMBOL.CALL
-        e.pushUniqueType SYMBOL.CALL
+        symbol_array[e].pushUniqueType SYMBOL.CALL
+        return
 
       # index
       if symbol.hasType(SYMBOL.IDENTIFIER) and
           ((n = peek(1)) and n.chars is CHAR.OPEN_BRACKET) and
           (e = find_next(-> @chars is CHAR.CLOSE_BRACKET))
         n.pushUniqueType SYMBOL.INDEX
-        e.pushUniqueType SYMBOL.INDEX
-
-      # param
+        symbol_array[e].pushUniqueType SYMBOL.INDEX
+        return
 
       # terminator
 
