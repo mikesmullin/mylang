@@ -96,7 +96,7 @@ class Symbol
 
 # in our system, symbols are like tags; a node can have multiple of them
 # but only a few make sense together
-SYMBOL = new Enum ['LINEBREAK','INDENT','WHITESPACE','WORD','NONWORD','KEYWORD',
+SYMBOL = new Enum ['LINEBREAK','INDENT','WORD','NONWORD','KEYWORD',
   'LETTER','IDENTIFIER','OPERATOR','STATEMENT_END','LITERAL','STRING','NUMBER',
   'INTEGER','DECIMAL','HEX','REGEX','PUNCTUATION','PARENTHESIS',
   'SQUARE_BRACKET','ANGLE_BRACKET','BRACE','PAIR','OPEN','CLOSE',
@@ -202,7 +202,7 @@ class Ast # Parser
         push_symbol indent_buf, SYMBOL.INDENT, indent_type: indent_type_this_line
         indent_buf = ''
       else if space_buf.length
-        push_symbol space_buf, SYMBOL.WHITESPACE
+        #push_symbol space_buf, SYMBOL.WHITESPACE
         space_buf = ''
       return
     slice_line_buf = (num_chars) ->
@@ -338,9 +338,9 @@ class Ast # Parser
       symbol = symbol_array[i]
       if symbol.hasType SYMBOL.WORD
         # keywords
-        if ( # can only have whitespace or pairs around them
-          (i is 0 or peek(-1).hasType SYMBOL.WHITESPACE, SYMBOL.PAIR) and
-          (i is len or peek(1).hasType SYMBOL.WHITESPACE, SYMBOL.PAIR)
+        if ( # cannot have nonwords around them
+          (i is 0 or not peek(-1).hasType SYMBOL.NONWORD) and
+          (i is len or not peek(1).hasType SYMBOL.NONWORD)
         )
           for group, keywords of SYNTAX.JAVA.KEYWORDS
             for keyword in keywords when symbol.chars is keyword
@@ -400,33 +400,33 @@ class Ast # Parser
       symbol = symbol_array[i]
       i = old_i
       return symbol
-    find_next = (test) ->
-      ii = i
+    find_next = (n,test) ->
+      ii = n
       while ++ii < len
         symbol = symbol_array[ii]
         return ii if test.call symbol
       return false
-    next_ignoring_whitespace = (i, test) ->
-      ii = i
-      while ++ii < len and
-          (symbol = symbol_array[ii]) and
-          (symbol.hasType SYMBOL.WHITESPACE, SYMBOL.LINEBREAK, SYMBOL.INDENT)
-        ;
-      return if test.call(symbol) then ii else false
     next_symbol = =>
       symbol = symbol_array[i]
 
       # type
       if symbol.hasType(SYMBOL.IDENTIFIER) and
           (not symbol.hasType(SYMBOL.ACCESS_MODIFIER)) and
-          (n = next_ignoring_whitespace(i, -> @hasType SYMBOL.IDENTIFIER))
+          ((n = peek(1)) and n.hasType is SYMBOL.IDENTIFIER)
         symbol.pushUniqueType SYMBOL.TYPE
+
+      # cast
+      #if symbol.hasType(SYMBOL.IDENTIFIER) and
+      #    (not symbol.hasType(SYMBOL.ACCESS_MODIFIER)) and
+      #    (n = find_next(i, -> @hasType SYMBOL.IDENTIFIER))
+      #    ((n = peek(1)) and n.chars is CHAR.OPEN_PARENTHESIS) and
+      #  symbol.pushUniqueType SYMBOL.TYPE
 
       # param
       if symbol.hasType(SYMBOL.IDENTIFIER) and
           ((n = peek(1)) and n.chars is CHAR.OPEN_PARENTHESIS) and
-          (e = find_next(-> @chars is CHAR.CLOSE_PARENTHESIS)) and
-          (f = next_ignoring_whitespace(e, -> @chars is CHAR.OPEN_BRACE))
+          (e = find_next(i, -> @chars is CHAR.CLOSE_PARENTHESIS)) and
+          ((f = peek(e+1)) and f.chars is CHAR.OPEN_BRACE)
         n.pushUniqueType SYMBOL.PARAM
         symbol_array[e].pushUniqueType SYMBOL.PARAM
         return
@@ -434,7 +434,7 @@ class Ast # Parser
       # call
       if symbol.hasType(SYMBOL.IDENTIFIER) and
           ((n = peek(1)) and n.chars is CHAR.OPEN_PARENTHESIS) and
-          (e = find_next(-> @chars is CHAR.CLOSE_PARENTHESIS))
+          (e = find_next(i, -> @chars is CHAR.CLOSE_PARENTHESIS))
         n.pushUniqueType SYMBOL.CALL
         symbol_array[e].pushUniqueType SYMBOL.CALL
         return
@@ -442,7 +442,7 @@ class Ast # Parser
       # index
       if symbol.hasType(SYMBOL.IDENTIFIER) and
           ((n = peek(1)) and n.chars is CHAR.OPEN_BRACKET) and
-          (e = find_next(-> @chars is CHAR.CLOSE_BRACKET))
+          (e = find_next(i, -> @chars is CHAR.CLOSE_BRACKET))
         n.pushUniqueType SYMBOL.INDEX
         symbol_array[e].pushUniqueType SYMBOL.INDEX
         return
