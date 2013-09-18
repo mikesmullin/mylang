@@ -44,7 +44,7 @@ class Symbol
     for _type in @types
       for __type in types
         if _type is undefined or __type is undefined
-          console.log "called hasType with ", _type: _type, __type: __type, types: types
+          console.log "called hasType with ", at: @, _type: _type, __type: __type, types: types
           console.trace()
         if _type.enum is __type.enum
           return true
@@ -101,7 +101,8 @@ SYMBOL = new Enum ['LINEBREAK','INDENT','WHITESPACE','WORD','NONWORD','KEYWORD',
   'INTEGER','DECIMAL','HEX','REGEX','PUNCTUATION','PARENTHESIS',
   'SQUARE_BRACKET','ANGLE_BRACKET','BRACE','PAIR','OPEN','CLOSE',
   'COMMENT','ENDLINE_COMMENT','MULTILINE_COMMENT',
-  'CALL','INDEX','PARAM','TERMINATOR','LEVEL_INC','LEVEL_DEC']
+  'CALL','INDEX','PARAM','TERMINATOR','LEVEL_INC','LEVEL_DEC',
+  'ACCESS_MODIFIER', 'TYPE']
 
 OPERATOR = new Enum ['UNARY_LEFT','UNARY_RIGHT','BINARY_LEFT_RIGHT',
   'BINARY_LEFT_LEFT','BINARY_RIGHT_RIGHT','TERNARY_RIGHT_RIGHT_RIGHT']
@@ -109,13 +110,11 @@ OPERATOR = new Enum ['UNARY_LEFT','UNARY_RIGHT','BINARY_LEFT_RIGHT',
 # syntax
 SYNTAX =
   JAVA: # proprietary to java
-    KEYWORDS: ['abstract','assert','boolean','break','byte','case','catch',
-      'char','class','const','continue','default','do','double','else',
-      'enum','extends','finally','float','for','goto','if','implements',
-      'import','instanceof','int','interface','long','native','new',
-      'package','private','protected','public','return','short','static',
-      'strictfp','super','switch','synchronized','this','throw','throws',
-      'transient','try','void','volatile','while']
+    KEYWORDS:
+      STATEMENTS: ['case','catch','continue','default','do','else','for','if','finally','goto','return','switch','try','while','throw']
+      ACCESS_MODIFIERS: ['abstract','const','private','protected','public','static','synchronized','transient','volatile']
+      TYPES: ['boolean','double','char','float','int','long','short','void']
+      OTHER: ['class','new','import','package','super','this','enum','implements','extends','instanceof','interface','native','strictfp','throws']
     LITERALS: ['false','null','true']
     OPERATORS: [
       { type: OPERATOR.UNARY_LEFT, name: 'postfix', symbols: [ '++', '--' ] }
@@ -331,9 +330,7 @@ class Ast # Parser
     peek = (n) ->
       old_i = i
       target_i = i + n
-      while i < target_i
-        i++
-        next_symbol()
+      next_symbol() while ++i < target_i
       symbol = symbol_array[i]
       i = old_i
       return symbol
@@ -345,9 +342,12 @@ class Ast # Parser
           (i is 0 or peek(-1).hasType SYMBOL.WHITESPACE, SYMBOL.PAIR) and
           (i is len or peek(1).hasType SYMBOL.WHITESPACE, SYMBOL.PAIR)
         )
-          for keyword in SYNTAX.JAVA.KEYWORDS
-            if symbol.chars is keyword
+          for group, keywords of SYNTAX.JAVA.KEYWORDS
+            for keyword in keywords when symbol.chars is keyword
               symbol.pushUniqueType SYMBOL.KEYWORD
+              switch group
+                when 'ACCESS_MODIFIERS' then symbol.pushUniqueType  SYMBOL.ACCESS_MODIFIER
+                when 'TYPES' then symbol.pushUniqueType  SYMBOL.TYPE
               return
 
           # literals
@@ -415,6 +415,12 @@ class Ast # Parser
       return if test.call(symbol) then ii else false
     next_symbol = =>
       symbol = symbol_array[i]
+
+      # type
+      if symbol.hasType(SYMBOL.IDENTIFIER) and
+          (not symbol.hasType(SYMBOL.ACCESS_MODIFIER)) and
+          (n = next_ignoring_whitespace(i, -> @hasType SYMBOL.IDENTIFIER))
+        symbol.pushUniqueType SYMBOL.TYPE
 
       # param
       if symbol.hasType(SYMBOL.IDENTIFIER) and

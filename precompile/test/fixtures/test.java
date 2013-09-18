@@ -1,9 +1,6 @@
 public class AccountExtension extends AbstractExtension
 {
-  @Override
-  public void init()
-  {
-    ExtensionUtility();
-  }
+  private boolean _isDestroyed = false;
+  private ExtensionHelper _sfsExtHelper;
+  private DatabaseLoggerManager _dbLogger;
 }
-
