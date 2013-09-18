@@ -67,7 +67,7 @@ class Symbol
     return [arr[i+1], args.length - 3]
   merge: (arr, i, len) ->
     symbol = arr[i]
-    for ii in [i+1...len]
+    for ii in [i+1...i+len]
       for own k, v of arr[ii]
         if k is 'chars'
           symbol[k] += v
@@ -219,8 +219,7 @@ class Ast # Parser
       for pair in SYNTAX.JAVA.PAIRS
         for search, k in pair.symbols
           if search is peek 0, search.length
-            console.log "found pair \"#{search}\" at line #{line}, char #{char}, byte #{byte}"
-            symbol = new Symbol search, [SYMBOL.PAIR], line: line, char: char, byte: byte, pair: name: pair.name
+            symbol = new Symbol search, [], line: line, char: char, byte: byte, pair: name: pair.name
             symbol.pushUniqueType type for type in pair.types
 
             # some pairs require that we find their endings immediately
@@ -256,6 +255,7 @@ class Ast # Parser
 
             # remaining pairs dont require us to find the ending
             # so we just mark them with separate opening and closing symbols
+            symbol.pushUniqueType SYMBOL.PAIR
             symbol.pushUniqueType SYMBOL.OPEN if k is 0 or pair.symbols[0] is pair.symbols[1]
             symbol.pushUniqueType SYMBOL.CLOSE if k is 1 or pair.symbols[0] is pair.symbols[1]
             return [symbol, search.length]
@@ -263,7 +263,6 @@ class Ast # Parser
       for operator in SYNTAX.JAVA.OPERATORS
         for search in operator.symbols
           if search is peek 0, search.length
-            console.log "found symbol \"#{search}\" at line #{line}, char #{char}, byte #{byte}"
             symbol = new Symbol search, [SYMBOL.OPERATOR], line: line, char: char, byte: byte, operator: type: operator.type, name: operator.name
             return [symbol, search.length]
       return false
@@ -378,7 +377,7 @@ class Ast # Parser
 
         # anything else must be
         # identifiers
-        symbol.pushUniqueType SYMBOL.IDENTIFIER
+        symbol.types = [SYMBOL.IDENTIFIER]
 
       else if symbol.hasType SYMBOL.NONWORD
         1
