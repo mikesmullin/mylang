@@ -129,15 +129,15 @@ SYNTAX =
       { type: OPERATOR.TERNARY_RIGHT_RIGHT_RIGHT, name: 'ternary', symbols: [['?',':']] }
       { type: OPERATOR.BINARY_LEFT_RIGHT, name: 'assignment', symbols: ['=', '+=', '-=', '*=', '/=', '%=', '&=', '^=', '|=', '<<=', '>>=', '>>>='] }
     ]
-    PAIRS: [
-      { name: 'index', types: [SYMBOL.BRACKET], symbols: ['[', ']'] }
-      { name: 'arguments', types: [SYMBOL.PARENTHESIS], symbols: ['(', ')'] }
-      { name: 'generic', types: [SYMBOL.ANGLE_BRACKET], symbols: ['<', '>'] }
-      { name: 'block', types: [SYMBOL.BRACE], symbols: ['{', '}'] }
-      { name: 'string', types: [SYMBOL.QUOTE, SYMBOL.STRING], symbols: ['"', '"'] }
-      { name: 'character', types: [SYMBOL.QUOTE, SYMBOL.STRING], symbols: ["'", "'"] }
+    PAIRS: [ # ordered by precendence
       { name: 'multi-line comment', types: [SYMBOL.COMMENT, SYMBOL.MULTILINE_COMMENT], symbols: ['/*', '*/'] }
       { name: 'single-line comment', types: [SYMBOL.COMMENT, SYMBOL.ENDLINE_COMMENT], symbols: ['//'] } # no match means until end of line
+      { name: 'string', types: [SYMBOL.QUOTE, SYMBOL.STRING], symbols: ['"', '"'] }
+      { name: 'character', types: [SYMBOL.QUOTE, SYMBOL.STRING], symbols: ["'", "'"] }
+      { name: 'block', types: [SYMBOL.BRACE], symbols: ['{', '}'] }
+      { name: 'arguments', types: [SYMBOL.PARENTHESIS], symbols: ['(', ')'] }
+      { name: 'generic', types: [SYMBOL.ANGLE_BRACKET], symbols: ['<', '>'] }
+      { name: 'index', types: [SYMBOL.BRACKET], symbols: ['[', ']'] }
       # TODO: heredocs would go here, too, if Java had any
     ]
 
@@ -250,10 +250,9 @@ class Ast # Parser
   # group one or more characters into symbols
   # also index possible pairs
   java_symbolizer: (symbol_array) ->
-    pairables = []
     i = -1
     len = symbol_array.length
-    searching_for_other_pair = false
+    open_pairs = []
     lookaround = (n) ->
       console.log ">>> BEGIN LOOK #{i} + #{n}"
       old_i = i
@@ -337,6 +336,38 @@ class Ast # Parser
               symbol.pushUniqueType SYMBOL.PAIR
               for type in pair.types
                 symbol.pushUniqueType type
+
+              # some pairs require that we find their endings immediately
+              # comments
+              if symbol.hasType SYMBOL.COMMENT
+                if symbol.hasType SYMBOL.ENDLINE_COMMENT
+                  # find_eol_or_eof
+                  ii = 0
+                  while ++ii < len
+                    sym = lookahead ii
+                    if sym.hasType SYMBOL.LINEBREAK
+                      # found ending
+                      break
+                  # merge symbols inbetween
+                  [symbol, delta] = symbol.merge symbol_array, i, ii
+                  len += delta
+                  return
+
+                else if symbol.hasType SYMBOL.MULTILINE_COMMENT
+                  # find end of comment
+
+
+              # strings
+              if symbol.hasType SYMBOL.STRING
+                # find end of string
+                1
+
+              # all other pairs we just turn each end into a symbol
+              # and provide context if we can
+              # TODO: determine type of opener by surroundings
+              #     openers preceeded by identifiers are types of _START
+              # closers are based on last opener
+
               # same symbol used to both open and close
               if pair.symbols[0] is pair.symbols[1]
                 symbol.pushUniqueType SYMBOL.OPEN
@@ -350,17 +381,12 @@ class Ast # Parser
               symbol.pair = name: pair.name
               pairables.push symbol
 
-              console.log "searching ", searching_for_other_pair
-              Ast::pretty_print_symbol_array symbol_array
-
               if k is 0 and symbol.hasType(SYMBOL.STRING, SYMBOL.COMMENT) and
-                  not searching_for_other_pair
                 # everything inbetween these symbols can be merged into a single symbol
                 # so its best to find the ending pair of these types right away
                 # just lookahead to until we find the next unescaped occurrence
                 ii = 0
                 found = false
-                searching_for_other_pair = true
                 console.log "SEARCHING FOR MATE TO #{chars}... WHICH LOOKS LIKE #{pair.symbols[1]}"
                 while ++ii < len-i
                   s = lookaround ii
@@ -371,7 +397,6 @@ class Ast # Parser
                       (s.chars is pair.symbols[1] or pair.symbols[1] is undefined)
                     console.log 'THIS SATISFIES ME', JSON.stringify s
                     found = true
-                    searching_for_other_pair = false
                     console.log "will merge from #{i} +#{ii+1}"
                     # commence symbol merge
                     [symbol, delta] = symbol.merge symbol_array, i, ii+1

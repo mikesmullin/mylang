@@ -75,7 +75,7 @@ describe 'Ast', ->
     console.log e = find_end_of_pair buf, 4, '*/'
     console.log buf.substr e-2, 4
 
-  it.only 'can build level hierearchy from pairs like ( [ { } ] )', ->
+  it 'can build level hierearchy from pairs like ( [ { } ] )', ->
     buf = '''
     hello ( a ( b
       [ c
@@ -94,6 +94,8 @@ describe 'Ast', ->
     # TODO: ensure comments and strings are matched first so all that is left are these type of pairs
     # find pairs that cannot be escaped but can recurse
     # return an array or object representing their hierarchy w/ data inbetween
+    # nah i'm not going to return an array i'm just going to modify the tokens like coffee does
+    # and then levels can be interpreted later down the chain with context
     match_pairs = (buf, start, pairs) ->
       matches = {}
       i = start-1
@@ -108,8 +110,10 @@ describe 'Ast', ->
     console.log e = find_end_of_pair buf, 4, '*/'
     console.log buf.substr e-2, 4
 
+  #TODO: make 'it can find and replace similar to regex but with 
+  # token patterns and strings like (KEYWORD:import, (IDENTIFIER|.)*, TERMINATOR ;), ('ts version')
 
-  it 'can open and compile a file', (done) ->
+  it.only 'can open and compile a file', (done) ->
     assert.isObject ast
     assert.isFunction ast.open
     ast.open fake_file, ->
