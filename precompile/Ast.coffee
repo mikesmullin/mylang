@@ -549,17 +549,17 @@ class Ast # Parser
     for statement, y in statements
       toToken = (s) -> SYMBOL[s.toUpperCase()]
       oneOrMore = (start, pattern) ->
-        ii = start-1
+        ii = start-2
         at_least_one = false
         while statement[++ii].hasType toToken pattern
           at_least_one = true
-        return if at_least_one then ii-1 else false
+        return if at_least_one then ii else false
       isA = (start, pattern) ->
-        statement[start].hasType toToken pattern
+        statement[start-1].hasType toToken pattern
       toString = (start, end) ->
-        end ||= statement.length
+        end ||= statement.length+1
         s = []
-        for ii in [start...end]
+        for ii in [start-1...end-1]
           if statement[ii].hasType SYMBOL.ACCESS
             s.push statement[ii].chars+' '
           else if statement[ii].hasType SYMBOL.OP
@@ -572,13 +572,12 @@ class Ast # Parser
       # transform some
       # but output all
       #if sig '^access+ type id'
-      if (x = oneOrMore 0, 'access') and
-          (isA x+1, 'type')
-        console.log x
-      if (x = oneOrMore 0, 'access') and
+      if (x = oneOrMore 1, 'access')
+        console.log x: x, y: y
+      if (x = oneOrMore 1, 'access') and
           (isA x+1, 'type') and
           (isA x+2, 'id')
-        out.classes += "#{toString x+2} # #{toString(0, x+1)}\n"
+        out.classes += "#{toString x+2} # #{toString 1, x+1}\n"
 
       #if sig 'cast' # discard cast token
       #if sig 'terminator' # replace with newline (and indent if level_inc)
@@ -733,6 +732,6 @@ class Ast # Parser
       toString = -> "(#{types} #{JSON.stringify symbol.chars}) "
       if last_line isnt symbol.line
         last_line = symbol.line
-        process.stdout.write " )\n( "
+        process.stdout.write "\n"
       process.stdout.write toString symbol
     process.stdout.write "\n"
