@@ -96,13 +96,13 @@ class Symbol
 
 # in our system, symbols are like tags; a node can have multiple of them
 # but only a few make sense together
-SYMBOL = new Enum ['LINEBREAK','INDENT','WORD','NONWORD','KEYWORD',
-  'LETTER','IDENTIFIER','OPERATOR','STATEMENT_END','LITERAL','STRING','NUMBER',
+SYMBOL = new Enum ['LINEBREAK','INDENT','WORD','TEXT','KEYWORD',
+  'LETTER','ID','OP','STATEMENT_END','LITERAL','STRING','NUMBER',
   'INTEGER','DECIMAL','HEX','REGEX','PUNCTUATION','PARENTHESIS',
   'SQUARE_BRACKET','ANGLE_BRACKET','BRACE','PAIR','OPEN','CLOSE',
   'COMMENT','ENDLINE_COMMENT','MULTILINE_COMMENT',
   'CALL','INDEX','PARAM','TERMINATOR','LEVEL_INC','LEVEL_DEC',
-  'ACCESS_MODIFIER', 'TYPE', 'TYPE_CAST','GENERIC_TYPE','SUPPORT']
+  'ACCESS', 'TYPE', 'TYPE_CAST','GENERIC_TYPE','SUPPORT']
 
 OPERATOR = new Enum ['UNARY_LEFT','UNARY_RIGHT','BINARY_LEFT_RIGHT',
   'BINARY_LEFT_LEFT','BINARY_RIGHT_RIGHT','TERNARY_RIGHT_RIGHT_RIGHT']
@@ -194,7 +194,7 @@ class Ast # Parser
       return
     slice_nonword_buf = ->
       if nonword_buf.length
-        push_symbol nonword_buf, SYMBOL.NONWORD
+        push_symbol nonword_buf, SYMBOL.TEXT
         word_on_this_line ||= true
         nonword_buf = ''
       return
@@ -212,7 +212,7 @@ class Ast # Parser
       slice_nonword_buf()
       slice_word_buf()
       if zbyte < len
-        push_symbol buf.substr(zbyte,num_chars), SYMBOL.LINEBREAK
+        #push_symbol buf.substr(zbyte,num_chars), SYMBOL.LINEBREAK
         line++
         char = 0
         zbyte += num_chars-1 # skip ahead
@@ -267,7 +267,7 @@ class Ast # Parser
       for operator in SYNTAX.JAVA.OPERATORS
         for search in operator.symbols
           if search is peek 0, search.length
-            symbol = new Symbol search, [SYMBOL.OPERATOR], line: line, char: char, byte: byte, operator: type: operator.type, name: operator.name
+            symbol = new Symbol search, [SYMBOL.OP], line: line, char: char, byte: byte, operator: type: operator.type, name: operator.name
             return [symbol, search.length]
       return false
 
@@ -343,32 +343,32 @@ class Ast # Parser
       if symbol.hasType SYMBOL.WORD
         # keywords
         if ( # cannot have nonwords around them
-          (i is 0 or not peek(-1).hasType SYMBOL.NONWORD) and
-          (i is len or not peek(1).hasType SYMBOL.NONWORD)
+          (i is 0 or not peek(-1).hasType SYMBOL.TEXT) and
+          (i is len or not peek(1).hasType SYMBOL.TEXT)
         )
           for group, keywords of SYNTAX.JAVA.KEYWORDS
             for keyword in keywords when symbol.chars is keyword
               symbol.pushUniqueType SYMBOL.KEYWORD
               switch group
-                when 'ACCESS_MODIFIERS' then symbol.pushUniqueType  SYMBOL.ACCESS_MODIFIER
-                when 'TYPES' then symbol.pushUniqueType  SYMBOL.TYPE
+                when 'ACCESS_MODIFIERS' then symbol.types = [SYMBOL.ACCESS]
+                when 'TYPES' then symbol.types = [SYMBOL.TYPE]
               return
 
           # literals
           for literal in SYNTAX.JAVA.LITERALS
             if symbol.chars is literal
-              symbol.pushUniqueType SYMBOL.LITERAL
+              symbol.types = [SYMBOL.LITERAL]
               return
 
         # number
         if symbol.chars.match /^-?\d+$/
-          symbol.pushUniqueType SYMBOL.NUMBER
+          symbol.types = [SYMBOL.NUMBER]
           if peek(1).chars is '.' and peek(2).hasType SYMBOL.NUMBER
             # merge the next two together
             [symbol, delta] = symbol.merge symbol_array, i, 3
             len += delta
             symbol.pushUniqueType SYMBOL.DECIMAL
-            symbol.removeType SYMBOL.NONWORD
+            symbol.removeType SYMBOL.TEXT
             symbol.removeType SYMBOL.INTEGER
           else
             symbol.pushUniqueType SYMBOL.INTEGER
@@ -382,9 +382,9 @@ class Ast # Parser
 
         # anything else must be
         # identifiers
-        symbol.types = [SYMBOL.IDENTIFIER]
+        symbol.types = [SYMBOL.ID]
 
-      else if symbol.hasType SYMBOL.NONWORD
+      else if symbol.hasType SYMBOL.TEXT
         1
         # TODO: later, determine type of opener by surroundings
         #       openers preceeded by identifiers are types of _START
@@ -425,25 +425,25 @@ class Ast # Parser
       return if symbol is undefined
 
       # type
-      if symbol.hasType(SYMBOL.IDENTIFIER) and
-          (not symbol.hasType(SYMBOL.ACCESS_MODIFIER)) and
-          ((n = peek(1)) and n.hasType SYMBOL.IDENTIFIER)
-        symbol.pushUniqueType SYMBOL.TYPE
+      if symbol.hasType(SYMBOL.ID) and
+          (not symbol.hasType(SYMBOL.ACCESS)) and
+          ((n = peek(1)) and n.hasType SYMBOL.ID)
+        symbol.types = [SYMBOL.TYPE]
 
       # cast
-      if symbol.hasType(SYMBOL.IDENTIFIER) and
+      if symbol.hasType(SYMBOL.ID) and
           ((p = peek(-1)) and p.chars is CHAR.OPEN_PARENTHESIS) and
           ((n = peek(1)) and n.chars is CHAR.CLOSE_PARENTHESIS)
         symbol.pushUniqueType SYMBOL.TYPE
         symbol.pushUniqueType SYMBOL.TYPE_CAST
         [symbol, delta] = symbol.merge symbol_array, i-1, 3
         symbol.chars = symbol.chars.substr 1, symbol.chars.length-2
-        symbol.types = [SYMBOL.IDENTIFIER, SYMBOL.TYPE, SYMBOL.TYPE_CAST]
+        symbol.types = [SYMBOL.ID, SYMBOL.TYPE, SYMBOL.TYPE_CAST]
         len += delta
         return
 
       # generics
-      if symbol.hasType(SYMBOL.IDENTIFIER) and
+      if symbol.hasType(SYMBOL.ID) and
           ((p = peek(-1)) and p.chars is CHAR.LESS)
         if peek(1).chars is CHAR.GREATER
           peek(-2).pushUniqueType SYMBOL.TYPE
@@ -455,7 +455,7 @@ class Ast # Parser
         else
           ii = i+1
           ii+=2 while symbol_array[ii].chars is CHAR.COMMA and
-              symbol_array[ii+1].hasType SYMBOL.IDENTIFIER
+              symbol_array[ii+1].hasType SYMBOL.ID
           if symbol_array[ii].chars is CHAR.GREATER
             # merge i-1 to ii
             [symbol, delta] = symbol.merge symbol_array, i-2, ii-i+3
@@ -464,7 +464,7 @@ class Ast # Parser
             return
 
       # param
-      if symbol.hasType(SYMBOL.IDENTIFIER) and
+      if symbol.hasType(SYMBOL.ID) and
           ((n = peek(1)) and n.chars is CHAR.OPEN_PARENTHESIS) and
           (e = find_next(i, -> @chars is CHAR.CLOSE_PARENTHESIS)) and
           (f = next_non_space(e+1, -> @chars is CHAR.OPEN_BRACE))
@@ -473,7 +473,7 @@ class Ast # Parser
         return
 
       # call
-      if symbol.hasType(SYMBOL.IDENTIFIER) and
+      if symbol.hasType(SYMBOL.ID) and
           ((n = peek(1)) and n.chars is CHAR.OPEN_PARENTHESIS) and
           (e = find_next(i, -> @chars is CHAR.CLOSE_PARENTHESIS))
         n.pushUniqueType SYMBOL.CALL
@@ -481,7 +481,7 @@ class Ast # Parser
         return
 
       # index
-      if symbol.hasType(SYMBOL.IDENTIFIER) and
+      if symbol.hasType(SYMBOL.ID) and
           ((n = peek(1)) and n.chars is CHAR.OPEN_BRACKET) and
           (e = find_next(i, -> @chars is CHAR.CLOSE_BRACKET))
         n.pushUniqueType SYMBOL.INDEX
@@ -491,6 +491,7 @@ class Ast # Parser
       # level++
       if symbol.chars is CHAR.OPEN_BRACE
         symbol.pushUniqueType SYMBOL.LEVEL_INC
+        symbol.pushUniqueType SYMBOL.TERMINATOR
         return
 
       # level--
@@ -498,7 +499,10 @@ class Ast # Parser
         symbol.pushUniqueType SYMBOL.LEVEL_DEC
         return
 
-      # terminator (basically the semicolon)
+      # terminator (basically the semicolon and the open bracket)
+      if symbol.chars is CHAR.SEMICOLON
+        symbol.pushUniqueType SYMBOL.TERMINATOR
+        return
 
       # override
       if symbol.chars is 'Override' and
@@ -515,6 +519,20 @@ class Ast # Parser
     return symbol_array
 
   translate_to_coffee: (symbol_array) ->
+    # split into statements
+    i = -1
+    len = symbol_array.length
+    statements = []
+    statement = []
+    while ++i < len
+      symbol = symbol_array[i]
+      statement.push symbol_array[i]
+      if symbol.hasType(SYMBOL.TERMINATOR)
+        statements.push statement
+        statement = []
+    if statement.length then statements.push statement
+    console.log statements.length
+
     out =
       req: ''
       mod: ''
@@ -527,139 +545,177 @@ class Ast # Parser
     i = -1
     len = symbol_array.length
     open_pairs = []
-    peek = (n) ->
-      old_i = i
-      if n > 0
-        target_i = i + n
-        next_symbol() while ++i < target_i
-      else
-        i += n
-      symbol = symbol_array[i]
-      i = old_i
-      return symbol
-    find_prev_last = (n,test) ->
-      ii = n
-      last = undefined
-      while --ii < len
-        symbol = symbol_array[ii]
-        if test.call symbol
-          last = ii
-        else
-          return last
-      return false
-    find_next = (n,test) ->
-      ii = n
-      while ++ii < len
-        symbol = symbol_array[ii]
-        return ii if test.call symbol
-      return false
-    to_string = (start, len) ->
-      words = []
-      for ii in [start..start+len]
-        words.push symbol_array[ii].chars
-      words.join ''
-    next_symbol = =>
-      symbol = symbol_array[i]
 
-      if symbol.hasType SYMBOL.IDENTIFIER
-        ids[symbol.chars] = 1 # symbol
+    for statement, y in statements
+      toToken = (s) -> SYMBOL[s.toUpperCase()]
+      oneOrMore = (start, pattern) ->
+        ii = start-1
+        at_least_one = false
+        while statement[++ii].hasType toToken pattern
+          at_least_one = true
+        return if at_least_one then ii-1 else false
+      isA = (start, pattern) ->
+        statement[start].hasType toToken pattern
+      toString = (start, end) ->
+        end ||= statement.length
+        s = []
+        for ii in [start...end]
+          if statement[ii].hasType SYMBOL.ACCESS
+            s.push statement[ii].chars+' '
+          else if statement[ii].hasType SYMBOL.OP
+            s.push ' '+statement[ii].chars+' '
+          else if statement[ii].hasType SYMBOL.TERMINATOR
+          else
+            s.push statement[ii].chars
+        s.join ''
 
-      # package = module.exports
-      if symbol.hasType(SYMBOL.KEYWORD) and
-          symbol.chars is 'package' and
-          (n = find_next(i, -> @hasType SYMBOL.STATEMENT_END))
-        out.mod += "module.exports = # package #{to_string i+1, n-i-2}\n"
-        i = n # skip ahead to next statement
-        return
+      # transform some
+      # but output all
+      #if sig '^access+ type id'
+      if (x = oneOrMore 0, 'access') and
+          (isA x+1, 'type')
+        console.log x
+      if (x = oneOrMore 0, 'access') and
+          (isA x+1, 'type') and
+          (isA x+2, 'id')
+        out.classes += "#{toString x+2} # #{toString(0, x+1)}\n"
 
-      # import = require
-      if symbol.hasType(SYMBOL.KEYWORD) and
-          symbol.chars is 'import' and
-          (n = find_next(i, -> @hasType SYMBOL.STATEMENT_END))
-        file = to_string(i+1, n-i-2)
-        [nil..., name] = file.split '.'
-        out.req += "#{name} = require '#{file.replace /\./g, '/'}'\n"
-        i = n # skip ahead to next statement
-        return
+      #if sig 'cast' # discard cast token
+      #if sig 'terminator' # replace with newline (and indent if level_inc)
 
-      # comments
-      if symbol.hasType SYMBOL.COMMENT, SYMBOL.SUPPORT
-        # multi-line
-        if symbol.hasType SYMBOL.MULTILINE_COMMENT
-          comment = symbol.chars
-            .replace(/^[\t ]*\*\/[\r\n]*/m, '') # bottom
-            .replace(/^[\t ]*\*[\t ]*/mg, '') # middle
-            .replace(/\/\*\*?[\r\n]*/, '') # top
-            .replace(/(^[\r\n]+|[\r\n]+$)/g, '') # trim
-            .replace(/^/mg, indent()) # indent
-          out.classes += "#{indent()}###\n#{comment}\n#{indent()}###\n\n"
-          return
-        # end-line
-        else if symbol.hasType SYMBOL.ENDLINE_COMMENT, SYMBOL.SUPPORT
-          comment = symbol.chars.replace(/^\s*\/\/\s*/mg, '')
-          out.classes += "#{indent()}# #{comment}\n"
-          return
+    #peek = (n) ->
+    #  old_i = i
+    #  if n > 0
+    #    target_i = i + n
+    #    next_symbol() while ++i < target_i
+    #  else
+    #    i += n
+    #  symbol = symbol_array[i]
+    #  i = old_i
+    #  return symbol
+    #find_prev_last = (n,test) ->
+    #  ii = n
+    #  last = undefined
+    #  while --ii < len
+    #    symbol = symbol_array[ii]
+    #    if test.call symbol
+    #      last = ii
+    #    else
+    #      return last
+    #  return false
+    #find_next = (n,test) ->
+    #  ii = n
+    #  while ++ii < len
+    #    symbol = symbol_array[ii]
+    #    return ii if test.call symbol
+    #  return false
+    #to_string = (start, len) ->
+    #  words = []
+    #  for ii in [start..start+len]
+    #    words.push symbol_array[ii].chars
+    #  words.join ''
+    #next_symbol = =>
+    #  symbol = symbol_array[i]
 
-      # class
-      if symbol.hasType(SYMBOL.KEYWORD) and
-          symbol.chars is 'class' and
-          (p = find_prev_last(i, -> @hasType SYMBOL.WORD)) and
-          (n = find_next(i, -> @hasType SYMBOL.LEVEL_INC))
-        access_mods = []
-        out.classes += "#{indent()}class "
-        for ii in [n..p]
-          if symbol_array[ii].hasType SYMBOL.ACCESS_MODIFIER, SYMBOL.TYPE
-            access_mods.push symbol_array[ii].chars
-          else if symbol_array[ii].chars is 'extends'
-            out.classes += 'extends '
-          else if symbol_array[ii].hasType SYMBOL.IDENTIFIER
-            out.classes += symbol_array[ii].chars + ' '
-        out.classes += "# #{access_mods.reverse().join ' '}\n"
-        return
+    #  if symbol.hasType SYMBOL.ID
+    #    ids[symbol.chars] = 1 # symbol
 
-      # function definition
-      if symbol.hasType(SYMBOL.PARAM) and
-          symbol.hasType(SYMBOL.OPEN) and
-          (p = find_prev_last(i-1, -> @hasType SYMBOL.WORD)) and
-          (n = find_next(i, -> @hasType SYMBOL.LEVEL_INC))
-        # TODO: if function has same name as parent class, rename to 'constructor'
-        param_types = []
-        fn_access_mods = []
-        fn_type = ''
-        params_open = false
-        out.classes += "#{indent()}"
-        for ii in [p..n]
-          s = symbol_array[ii]
-          if s.hasType SYMBOL.TYPE
-            if params_open
-              param_types.push s.chars
-            else
-              fn_type = s.chars
-          else if s.hasType SYMBOL.ACCESS_MODIFIER
-            unless params_open
-              fn_access_mods.push s.chars
-          else if s.hasType(SYMBOL.PARAM) and s.hasType(SYMBOL.OPEN)
-            params_open = true
-          else if s.hasType SYMBOL.IDENTIFIER
-            if params_open
-              out.classes += s.chars + ' '
-            else
-              out.classes += s.chars + ': () -> '
-          else if s.hasType SYMBOL.NONWORD
-            out.classes += s.chars
-        out.classes += "# #{fn_access_mods.reverse().join ' '} (#{param_types.join ': , '}): #{fn_type}\n"
-        return
+    #  # package = module.exports
+    #  if symbol.hasType(SYMBOL.KEYWORD) and
+    #      symbol.chars is 'package' and
+    #      (n = find_next(i, -> @hasType SYMBOL.STATEMENT_END))
+    #    out.mod += "module.exports = # package #{to_string i+1, n-i-2}\n"
+    #    i = n # skip ahead to next statement
+    #    return
 
-      # levels
-      level++ if symbol.hasType SYMBOL.LEVEL_INC
-      level-- if symbol.hasType SYMBOL.LEVEL_DEC
+    #  # import = require
+    #  if symbol.hasType(SYMBOL.KEYWORD) and
+    #      symbol.chars is 'import' and
+    #      (n = find_next(i, -> @hasType SYMBOL.STATEMENT_END))
+    #    file = to_string(i+1, n-i-2)
+    #    [nil..., name] = file.split '.'
+    #    out.req += "#{name} = require '#{file.replace /\./g, '/'}'\n"
+    #    i = n # skip ahead to next statement
+    #    return
 
-      # TODO: should map levels to lexical scope
-      # TODO: should build registry of identifiers and their local scope
-      # TODO: should group by all the logical ways here:
-      #  classes, function, function arguments, generic, index, switch statement, for loop, etc.
+    #  # comments
+    #  if symbol.hasType SYMBOL.COMMENT, SYMBOL.SUPPORT
+    #    # multi-line
+    #    if symbol.hasType SYMBOL.MULTILINE_COMMENT
+    #      comment = symbol.chars
+    #        .replace(/^[\t ]*\*\/[\r\n]*/m, '') # bottom
+    #        .replace(/^[\t ]*\*[\t ]*/mg, '') # middle
+    #        .replace(/\/\*\*?[\r\n]*/, '') # top
+    #        .replace(/(^[\r\n]+|[\r\n]+$)/g, '') # trim
+    #        .replace(/^/mg, indent()) # indent
+    #      out.classes += "#{indent()}###\n#{comment}\n#{indent()}###\n\n"
+    #      return
+    #    # end-line
+    #    else if symbol.hasType SYMBOL.ENDLINE_COMMENT, SYMBOL.SUPPORT
+    #      comment = symbol.chars.replace(/^\s*\/\/\s*/mg, '')
+    #      out.classes += "#{indent()}# #{comment}\n"
+    #      return
 
-    next_symbol() while ++i < len
+    #  # class
+    #  if symbol.hasType(SYMBOL.KEYWORD) and
+    #      symbol.chars is 'class' and
+    #      (p = find_prev_last(i, -> @hasType SYMBOL.WORD)) and
+    #      (n = find_next(i, -> @hasType SYMBOL.LEVEL_INC))
+    #    access_mods = []
+    #    out.classes += "#{indent()}class "
+    #    for ii in [n..p]
+    #      if symbol_array[ii].hasType SYMBOL.ACCESS, SYMBOL.TYPE
+    #        access_mods.push symbol_array[ii].chars
+    #      else if symbol_array[ii].chars is 'extends'
+    #        out.classes += 'extends '
+    #      else if symbol_array[ii].hasType SYMBOL.ID
+    #        out.classes += symbol_array[ii].chars + ' '
+    #    out.classes += "# #{access_mods.reverse().join ' '}\n"
+    #    return
+
+    #  # function definition
+    #  if symbol.hasType(SYMBOL.PARAM) and
+    #      symbol.hasType(SYMBOL.OPEN) and
+    #      (p = find_prev_last(i-1, -> @hasType SYMBOL.WORD)) and
+    #      (n = find_next(i, -> @hasType SYMBOL.LEVEL_INC))
+    #    # TODO: if function has same name as parent class, rename to 'constructor'
+    #    param_types = []
+    #    fn_access_mods = []
+    #    fn_type = ''
+    #    params_open = false
+    #    out.classes += "#{indent()}"
+    #    for ii in [p..n]
+    #      s = symbol_array[ii]
+    #      if s.hasType SYMBOL.TYPE
+    #        if params_open
+    #          param_types.push s.chars
+    #        else
+    #          fn_type = s.chars
+    #      else if s.hasType SYMBOL.ACCESS
+    #        unless params_open
+    #          fn_access_mods.push s.chars
+    #      else if s.hasType(SYMBOL.PARAM) and s.hasType(SYMBOL.OPEN)
+    #        params_open = true
+    #      else if s.hasType SYMBOL.ID
+    #        if params_open
+    #          out.classes += s.chars + ' '
+    #        else
+    #          out.classes += s.chars + ': () -> '
+    #      else if s.hasType SYMBOL.TEXT
+    #        out.classes += s.chars
+    #    out.classes += "# #{fn_access_mods.reverse().join ' '} (#{param_types.join ': , '}): #{fn_type}\n"
+    #    return
+
+    #  # levels
+    #  level++ if symbol.hasType SYMBOL.LEVEL_INC
+    #  level-- if symbol.hasType SYMBOL.LEVEL_DEC
+
+    #  # TODO: should map levels to lexical scope
+    #  # TODO: should build registry of identifiers and their local scope
+    #  # TODO: should group by all the logical ways here:
+    #  #  classes, function, function arguments, generic, index, switch statement, for loop, etc.
+
+    #next_symbol() while ++i < len
 
     @pretty_print_symbol_array symbol_array
     out = "#{out.req}\n#{out.mod}\n#{out.classes}\n"
@@ -674,7 +730,7 @@ class Ast # Parser
     for symbol, i in symbol_array
       #return if i > 80
       types = []; types.push type.enum for type in symbol.types; types = types.join ', '
-      toString = -> "(#{i}:#{symbol.line}:#{symbol.char} #{types} #{JSON.stringify symbol.chars}) "
+      toString = -> "(#{types} #{JSON.stringify symbol.chars}) "
       if last_line isnt symbol.line
         last_line = symbol.line
         process.stdout.write " )\n( "
