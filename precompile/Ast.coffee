@@ -152,8 +152,8 @@ class Ast # Parser
   open: (file, cb) ->
     fs.readFile file, encoding: 'utf8', flag: 'r', (err, data) =>
       throw err if err
-      @compile file, data
-      cb()
+      code = @compile file, data
+      cb code
     return
 
   compile: (file, buf) ->
@@ -161,6 +161,7 @@ class Ast # Parser
     symbol_array = @symbolizer symbol_array # distinguish keywords, literals, identifiers in source language
     symbol_array = @java_syntaxer symbol_array # create Abstract Syntax Tree (AST)
     code = @translate_to_coffee symbol_array
+    return code
 
   lexer: (file, buf) ->
     c = ''
@@ -700,7 +701,6 @@ class Ast # Parser
           continue
         # single-line
         else if symbol.hasType SYMBOL.ENDLINE_COMMENT, SYMBOL.SUPPORT
-          console.log 'found a comment'
           comment = symbol.chars.replace(/^\s*\/\/\s*/mg, '')
           out.classes += "#{indent()}# #{comment}\n"
           continue
@@ -817,9 +817,9 @@ class Ast # Parser
       # any id not prefixed by a \.:
       #  @ unless part of requires or defined in local scope
 
-    @pretty_print_symbol_array symbol_array
+    #@pretty_print_symbol_array symbol_array
     out = "#{out.req}\n#{out.mod}\n#{out.classes}\n"
-    console.log "--- OUTPUT:------\n\n#{out}"
+    #console.log "--- OUTPUT:------\n\n#{out}"
     #console.log "--- IDs:-----\n\n", JSON.stringify ids, null, 2
     return out
 

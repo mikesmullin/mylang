@@ -10,5 +10,9 @@
     "coffee-script": "~1.6.3",
     "chai": "~1.7.2",
     "mocha": "~1.12.0"
+  },
+  "dependencies": {
+    "glob": "~3.2.6",
+    "async2": "~0.1.7"
   }
 }
