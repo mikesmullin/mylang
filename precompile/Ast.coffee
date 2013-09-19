@@ -765,10 +765,9 @@ class Ast # Parser
           (isA x+iii+1, 'id') and
           (isA x+iii+2, 'param') and
           (isA x+iii+2, 'open')
-        console.log 'functionf ound'
         param_types = []
         fn_access_mods = []
-        fn_type = ''
+        fn_type = 'void'
         fn_id = ''
         fn_comment = ''
         fn_params = []
@@ -795,6 +794,7 @@ class Ast # Parser
               fn_params.push s.chars
         if fn_params.length then fn_params
         fn_params = if fn_params.length then "(#{fn_params.join ', '}) " else ''
+        param_types = unless param_types.length then ['void'] else param_types
         fn_id = 'constructor' if fn_id is last_class_id
         # if static accessor used, dont use @ prefix
         if fn_id[0] is '@' and hasAccessor 1, x, 'static'
