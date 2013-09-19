@@ -512,21 +512,30 @@ class Ast # Parser
         len += delta
         return
 
-      # param
       if symbol.hasType(SYMBOL.ID) and
           ((n = peek(1)) and n.chars is CHAR.OPEN_PARENTHESIS) and
-          (e = find_next(i, -> @chars is CHAR.CLOSE_PARENTHESIS)) and
-          (symbol_array[e+1].chars is CHAR.OPEN_BRACE)
-        n.pushUniqueType SYMBOL.PARAM
-        symbol_array[e].pushUniqueType SYMBOL.PARAM
-        return
+          (e = next_matching_pair(i, (-> @chars is CHAR.OPEN_PARENTHESIS), -> @chars is CHAR.CLOSE_PARENTHESIS))
 
-      # call
-      if symbol.hasType(SYMBOL.ID) and
-          ((n = peek(1)) and n.chars is CHAR.OPEN_PARENTHESIS) and
-          (e = find_next(i, -> @chars is CHAR.CLOSE_PARENTHESIS))
-        n.pushUniqueType SYMBOL.CALL
-        symbol_array[e].pushUniqueType SYMBOL.CALL
+        # param
+        if (symbol_array[e+1].chars is CHAR.OPEN_BRACE)
+          n.pushUniqueType SYMBOL.PARAM
+          symbol_array[e].pushUniqueType SYMBOL.PARAM
+        else if (symbol_array[e+1].chars is 'throws') and
+            (symbol_array[e+2].hasType SYMBOL.ID) and
+            (symbol_array[e+3].chars is CHAR.OPEN_BRACE)
+          # transform the `throws Exception` into end-line comment
+          n.pushUniqueType SYMBOL.PARAM
+          symbol_array[e].pushUniqueType SYMBOL.PARAM
+          chars = symbol_array[e+1].chars+' '+symbol_array[e+2].chars
+          [symbol, delta] = symbol.merge symbol_array, e+1, 2
+          symbol.chars = chars
+          symbol.types = [SYMBOL.COMMENT, SYMBOL.ENDLINE_COMMENT]
+          len += delta
+
+        # call
+        else
+          n.pushUniqueType SYMBOL.CALL
+          symbol_array[e].pushUniqueType SYMBOL.CALL
         return
 
       # index
@@ -756,10 +765,12 @@ class Ast # Parser
           (isA x+iii+1, 'id') and
           (isA x+iii+2, 'param') and
           (isA x+iii+2, 'open')
+        console.log 'functionf ound'
         param_types = []
         fn_access_mods = []
         fn_type = ''
         fn_id = ''
+        fn_comment = ''
         fn_params = []
         params_open = false
         in_fn_scope = true
@@ -775,6 +786,8 @@ class Ast # Parser
               param_types.push s.chars
           else if s.hasType(SYMBOL.PARAM) and s.hasType(SYMBOL.OPEN)
             params_open = true
+          else if s.hasType SYMBOL.ENDLINE_COMMENT
+            fn_comment = s.chars
           else if s.hasType SYMBOL.ID
             unless params_open
               fn_id = s.chars
@@ -786,7 +799,7 @@ class Ast # Parser
         # if static accessor used, dont use @ prefix
         if fn_id[0] is '@' and hasAccessor 1, x, 'static'
           fn_id = fn_id.substr 1, fn_id.length-1
-        out.classes += "#{indent()}#{fn_id}: #{fn_params}-> # #{fn_access_mods.reverse().join ' '} (#{param_types.join ', '}): #{fn_type}\n"
+        out.classes += "#{indent()}#{fn_id}: #{fn_params}-> # #{fn_access_mods.reverse().join ' '} (#{param_types.join ', '}): #{fn_type} #{fn_comment}\n"
         continue
 
       #'^access+ type id'
