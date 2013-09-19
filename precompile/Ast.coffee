@@ -1,4 +1,5 @@
-fs = require 'fs'
+# HACK: pulling out fs so we can run this in a browser
+# fs = require 'fs'
 deepCopy = (obj) ->
   if Object::toString.call(obj) is "[object Array]"
     out = []
@@ -147,8 +148,10 @@ SYNTAX =
     ]
 
 
-module.exports =
+# HACK: pulling out module so we can run this in a browser
+# module.exports =
 class Ast # Parser
+  # NOTE: this function will fail when run in the browser (because there's no fs module)
   open: (file, cb) ->
     fs.readFile file, encoding: 'utf8', flag: 'r', (err, data) =>
       throw err if err
@@ -810,7 +813,7 @@ class Ast # Parser
         if in_class_scope and not in_fn_scope
           if id[0] is '@' and hasAccessor 1, x, 'static' # if static
             statement[x+1].chars = statement[x+1].chars.substr 1, statement[x+1].chars.length-1 # no @
-        out.classes += "#{indent()}#{toString x+2} # #{toString 1, x+1}\n"
+        out.classes += "#{indent()}#{toString x+2} # #{toString 1, x+2}\n"
       else
         out.classes += "#{indent()}#{toString 1}\n"
 
@@ -819,8 +822,6 @@ class Ast # Parser
 
     #@pretty_print_symbol_array symbol_array
     out = "#{out.req}\n#{out.mod}\n#{out.classes}\n"
-    #console.log "--- OUTPUT:------\n\n#{out}"
-    #console.log "--- IDs:-----\n\n", JSON.stringify ids, null, 2
     return out
 
   # TODO: technically these are called tokens
