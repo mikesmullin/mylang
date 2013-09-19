@@ -433,17 +433,15 @@ class Ast # Parser
           ((n = peek(1)) and n.hasType SYMBOL.ID)
         symbol.types = [SYMBOL.TYPE]
 
-      # cast
+      # array type
       if symbol.hasType(SYMBOL.ID) and
-          ((p = peek(-1)) and p.chars is CHAR.OPEN_PARENTHESIS) and
-          ((n = peek(1)) and n.chars is CHAR.CLOSE_PARENTHESIS)
-        symbol.pushUniqueType SYMBOL.TYPE
-        symbol.pushUniqueType SYMBOL.CAST
-        [symbol, delta] = symbol.merge symbol_array, i-1, 3
-        symbol.chars = symbol.chars.substr 1, symbol.chars.length-2
-        symbol.types = [SYMBOL.ID, SYMBOL.TYPE, SYMBOL.CAST]
+          (not symbol.hasType(SYMBOL.ACCESS)) and
+          ((n = peek(1)) and n.chars is CHAR.OPEN_BRACKET) and
+          ((n = peek(2)) and n.chars is CHAR.CLOSE_BRACKET) and
+          ((n = peek(3)) and n.hasType SYMBOL.ID)
+        [symbol, delta] = symbol.merge symbol_array, i, 3
+        symbol.types = [SYMBOL.TYPE]
         len += delta
-        return
 
       # generics
       if symbol.hasType(SYMBOL.ID) and
@@ -465,6 +463,18 @@ class Ast # Parser
             symbol.types = [SYMBOL.TYPE, SYMBOL.GENERIC_TYPE]
             len += delta
             return
+
+      # cast
+      if symbol.hasType(SYMBOL.ID) and
+          ((p = peek(-1)) and p.chars is CHAR.OPEN_PARENTHESIS) and
+          ((n = peek(1)) and n.chars is CHAR.CLOSE_PARENTHESIS)
+        symbol.pushUniqueType SYMBOL.TYPE
+        symbol.pushUniqueType SYMBOL.CAST
+        [symbol, delta] = symbol.merge symbol_array, i-1, 3
+        symbol.chars = symbol.chars.substr 1, symbol.chars.length-2
+        symbol.types = [SYMBOL.ID, SYMBOL.TYPE, SYMBOL.CAST]
+        len += delta
+        return
 
       # param
       if symbol.hasType(SYMBOL.ID) and
@@ -630,32 +640,35 @@ class Ast # Parser
           (isA x+2, 'id') and
           (isA x+3, 'param') and
           (isA x+3, 'open')
-        # TODO: if function has same name as parent class, rename to 'constructor'
         param_types = []
         fn_access_mods = []
         fn_type = ''
+        fn_id = ''
+        fn_params = []
         params_open = false
-        out.classes += "#{indent()}"
+        console.log JSON.stringify statement
         for ii in [0...statement.length]
           s = statement[ii]
-          if s.hasType SYMBOL.TYPE
-            if params_open
-              param_types.push s.chars
-            else
-              fn_type = s.chars
-          else if s.hasType SYMBOL.ACCESS
+          if s.hasType SYMBOL.ACCESS
             unless params_open
               fn_access_mods.push s.chars
+          else if s.hasType SYMBOL.TYPE
+            unless params_open
+              fn_type = s.chars
+            else
+              param_types.push s.chars
           else if s.hasType(SYMBOL.PARAM) and s.hasType(SYMBOL.OPEN)
             params_open = true
           else if s.hasType SYMBOL.ID
-            if params_open
-              out.classes += s.chars + ' '
+            unless params_open
+              fn_id = s.chars
             else
-              out.classes += s.chars + ': () -> '
-          else if s.hasType SYMBOL.TEXT
-            out.classes += s.chars
-        out.classes += "# #{fn_access_mods.reverse().join ' '} (#{param_types.join ': , '}): #{fn_type}\n"
+              fn_params.push s.chars
+        if fn_params.length then fn_params
+        fn_params = if fn_params then "(#{fn_params.join ', '})" else ''
+        # TODO: if function has same name as parent class, rename to 'constructor'
+        # TODO: if static accessor used, dont use @ prefix
+        out.classes += "#{indent()}@#{fn_id}: #{fn_params} -> # #{fn_access_mods.reverse().join ' '} (#{param_types.join ', '}): #{fn_type}\n"
         continue
 
       #'^access+ type id'
@@ -676,59 +689,6 @@ class Ast # Parser
 
       # any id not prefixed by a \.:
       #  @ unless part of requires or defined in local scope
-
-
-
-
-
-
-
-
-    #  # levels
-    #  level++ if symbol.hasType SYMBOL.LEVEL_INC
-    #  level-- if symbol.hasType SYMBOL.LEVEL_DEC
-
-    #  # TODO: should map levels to lexical scope
-    #  # TODO: should build registry of identifiers and their local scope
-    #  # TODO: should group by all the logical ways here:
-    #  #  classes, function, function arguments, generic, index, switch statement, for loop, etc.
-
-    #peek = (n) ->
-    #  old_i = i
-    #  if n > 0
-    #    target_i = i + n
-    #    next_symbol() while ++i < target_i
-    #  else
-    #    i += n
-    #  symbol = symbol_array[i]
-    #  i = old_i
-    #  return symbol
-    #find_prev_last = (n,test) ->
-    #  ii = n
-    #  last = undefined
-    #  while --ii < len
-    #    symbol = symbol_array[ii]
-    #    if test.call symbol
-    #      last = ii
-    #    else
-    #      return last
-    #  return false
-    #find_next = (n,test) ->
-    #  ii = n
-    #  while ++ii < len
-    #    symbol = symbol_array[ii]
-    #    return ii if test.call symbol
-    #  return false
-    #to_string = (start, len) ->
-    #  words = []
-    #  for ii in [start..start+len]
-    #    words.push symbol_array[ii].chars
-    #  words.join ''
-    #next_symbol = =>
-    #  symbol = symbol_array[i]
-
-
-    #next_symbol() while ++i < len
 
     @pretty_print_symbol_array symbol_array
     out = "#{out.req}\n#{out.mod}\n#{out.classes}\n"
