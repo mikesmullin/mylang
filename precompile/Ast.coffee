@@ -529,7 +529,7 @@ class Ast # Parser
       # implicit block
       if symbol.hasType(SYMBOL.BLOCK) and
           ((n = peek(1)) and n.chars is CHAR.OPEN_PARENTHESIS) and
-          (e = next_matching_pair(i+1, (-> @chars is CHAR.OPEN_PARENTHESIS), -> @chars is CHAR.CLOSE_PARENTHESIS)) and
+          (e = next_matching_pair(i, (-> @chars is CHAR.OPEN_PARENTHESIS), -> @chars is CHAR.CLOSE_PARENTHESIS)) and
           (symbol_array[e+1].chars isnt CHAR.OPEN_BRACE) and
           (f = find_next(e+1, -> @hasType SYMBOL.STATEMENT_END))
         symbol_array.splice e+1, 0, new Symbol CHAR.OPEN_BRACE, [SYMBOL.BRACE, SYMBOL.PAIR, SYMBOL.OPEN, SYMBOL.LEVEL_INC]
@@ -575,15 +575,16 @@ class Ast # Parser
     len = symbol_array.length
     statements = []
     statement = []
+    last_level = 0
     while ++i < len
       symbol = symbol_array[i]
       statement.push symbol_array[i]
       if symbol.hasType SYMBOL.TERMINATOR, SYMBOL.COMMENT, SYMBOL.SUPPORT, SYMBOL.DOUBLE_SPACE, SYMBOL.LEVEL_DEC
-        statement.level = symbol.level
+        last_level = statement.level = symbol.level
         statements.push statement
         statement = []
     if statement.length
-      statement.level = symbol.level
+      statement.level = last_level + 1 # TODO: this may not always work
       statements.push statement
       statement = []
 
@@ -672,11 +673,17 @@ class Ast # Parser
             .replace(/^/mg, indent()) # indent
           out.classes += "#{indent()}###\n#{comment}\n#{indent()}###\n"
           continue
-        # end-line
+        # single-line
         else if symbol.hasType SYMBOL.ENDLINE_COMMENT, SYMBOL.SUPPORT
+          console.log 'found a comment'
           comment = symbol.chars.replace(/^\s*\/\/\s*/mg, '')
           out.classes += "#{indent()}# #{comment}\n"
           continue
+      else
+        # end-line
+        for s in statement when s.hasType SYMBOL.ENDLINE_COMMENT, SYMBOL.SUPPORT
+          s.chars = s.chars.replace(/^\s*\/\/\s*/mg, ' # ')
+          break
 
       # scope
       if symbol.hasType(SYMBOL.LEVEL_DEC)
@@ -757,12 +764,12 @@ class Ast # Parser
             else
               fn_params.push s.chars
         if fn_params.length then fn_params
-        fn_params = if fn_params then "(#{fn_params.join ', '})" else ''
+        fn_params = if fn_params.length then "(#{fn_params.join ', '}) " else ''
         fn_id = 'constructor' if fn_id is last_class_id
         # if static accessor used, dont use @ prefix
         if fn_id[0] is '@' and hasAccessor 1, x, 'static'
           fn_id = fn_id.substr 1, fn_id.length-1
-        out.classes += "#{indent()}#{fn_id}: #{fn_params} -> # #{fn_access_mods.reverse().join ' '} (#{param_types.join ', '}): #{fn_type}\n"
+        out.classes += "#{indent()}#{fn_id}: #{fn_params}-> # #{fn_access_mods.reverse().join ' '} (#{param_types.join ', '}): #{fn_type}\n"
         continue
 
       #'^access+ type id'

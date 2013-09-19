@@ -1,10 +1,10 @@
 public class AccountExtension extends AbstractExtension
 {
-  public void init()
-  {
-    if (!_isDestroyed && (a * (b)))
+  public void a() {
+    // any password policy enforcement goes here
+    if (password.length() < SbiConstants.MIN_PASSWORD_LEN)  // TODO: auto-sync password policy with SGE?
     {
-      hhamster;
+      return SbiConstants.MSG_ID_PASSWORD_INVALID;
     }
   }
 }
