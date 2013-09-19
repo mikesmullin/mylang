@@ -102,7 +102,8 @@ SYMBOL = new Enum ['LINEBREAK','INDENT','WORD','TEXT','KEYWORD',
   'SQUARE_BRACKET','ANGLE_BRACKET','BRACE','PAIR','OPEN','CLOSE',
   'COMMENT','ENDLINE_COMMENT','MULTILINE_COMMENT',
   'CALL','INDEX','PARAM','TERMINATOR','LEVEL_INC','LEVEL_DEC',
-  'ACCESS', 'TYPE', 'CAST','GENERIC_TYPE','SUPPORT']
+  'ACCESS', 'TYPE', 'CAST','GENERIC_TYPE','SUPPORT',
+  'DOUBLE_SPACE']
 
 OPERATOR = new Enum ['UNARY_LEFT','UNARY_RIGHT','BINARY_LEFT_RIGHT',
   'BINARY_LEFT_LEFT','BINARY_RIGHT_RIGHT','TERNARY_RIGHT_RIGHT_RIGHT']
@@ -173,6 +174,7 @@ class Ast # Parser
     indent_buf = ''
     nonword_buf = ''
     symbol_array = []
+    double_space = true
     word_on_this_line = false
     indent_type_this_line = undefined
 
@@ -191,12 +193,14 @@ class Ast # Parser
         push_symbol word_buf, SYMBOL.WORD
         word_on_this_line ||= true
         word_buf = ''
+        double_space = false
       return
     slice_nonword_buf = ->
       if nonword_buf.length
         push_symbol nonword_buf, SYMBOL.TEXT
         word_on_this_line ||= true
         nonword_buf = ''
+        double_space = false
       return
     slice_space_buf = ->
       if indent_buf.length
@@ -213,16 +217,20 @@ class Ast # Parser
       slice_word_buf()
       if zbyte < len
         #push_symbol buf.substr(zbyte,num_chars), SYMBOL.LINEBREAK
+        if double_space
+          push_symbol buf.substr(zbyte,num_chars), SYMBOL.DOUBLE_SPACE
         line++
         char = 0
         zbyte += num_chars-1 # skip ahead
         word_on_this_line = false
         indent_type_this_line = undefined
+        double_space = true
       return
     is_pair = ->
       for pair in SYNTAX.JAVA.PAIRS
         for search, k in pair.symbols
           if search is peek 0, search.length
+            double_space = false
             symbol = new Symbol search, [], line: line, char: char, byte: byte, pair: name: pair.name
             symbol.pushUniqueType type for type in pair.types
 
@@ -267,6 +275,7 @@ class Ast # Parser
       for operator in SYNTAX.JAVA.OPERATORS
         for search in operator.symbols
           if search is peek 0, search.length
+            double_space = false
             symbol = new Symbol search, [SYMBOL.OP], line: line, char: char, byte: byte, operator: type: operator.type, name: operator.name
             return [symbol, search.length]
       return false
@@ -308,6 +317,7 @@ class Ast # Parser
 
           # terminator
           if c is CHAR.SEMICOLON
+            double_space = false
             symbol_array.push new Symbol c, [SYMBOL.STATEMENT_END], line: line, char: char, byte: byte
             continue
 
@@ -542,7 +552,7 @@ class Ast # Parser
     while ++i < len
       symbol = symbol_array[i]
       statement.push symbol_array[i]
-      if symbol.hasType SYMBOL.TERMINATOR, SYMBOL.COMMENT, SYMBOL.SUPPORT
+      if symbol.hasType SYMBOL.TERMINATOR, SYMBOL.COMMENT, SYMBOL.SUPPORT, SYMBOL.DOUBLE_SPACE
         statement.level = symbol.level
         statements.push statement
         statement = []
@@ -588,6 +598,8 @@ class Ast # Parser
               s.push ' '+statement[ii].chars+' '
             last_had_space = true
           else if statement[ii].hasType SYMBOL.TERMINATOR, SYMBOL.CAST, SYMBOL.BRACE
+          else if statement[ii].hasType SYMBOL.DOUBLE_SPACE
+            s.push ''
           else
             last_had_space = false
             s.push statement[ii].chars
@@ -598,7 +610,7 @@ class Ast # Parser
       # package = module.exports
       if symbol.hasType(SYMBOL.KEYWORD) and
           symbol.chars is 'package'
-        out.mod += "module.exports = # #{toString 1}\n"
+        out.mod += "module.exports = # #{toString 1}"
         continue
 
       # import = require
@@ -619,7 +631,7 @@ class Ast # Parser
             .replace(/\/\*\*?[\r\n]*/, '') # top
             .replace(/(^[\r\n]+|[\r\n]+$)/g, '') # trim
             .replace(/^/mg, indent()) # indent
-          out.classes += "\n#{indent()}###\n#{comment}\n#{indent()}###\n"
+          out.classes += "#{indent()}###\n#{comment}\n#{indent()}###\n"
           continue
         # end-line
         else if symbol.hasType SYMBOL.ENDLINE_COMMENT, SYMBOL.SUPPORT

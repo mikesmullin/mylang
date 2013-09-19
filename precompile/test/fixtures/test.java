@@ -21,6 +21,7 @@ public class AccountExtension extends AbstractExtension
   {
     ExtensionUtility.debugTrace("init()", 3, CLASS_NAME);
     SbiAbstractHandler.accountExt = this;
+
     OneExtensionToRuleThemAll e = SbiAbstractHandler.ext;
     // init all handlers to pre-existing handlers from world zone IN THIS ORDER
     SbiManagementAgent.init();
