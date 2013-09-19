@@ -17,7 +17,7 @@ require('glob') "#{indir}/**/*.java", (err, files) ->
   for file in files
     relfile = path.relative indir, file
     outfile = path.join outdir, relfile
-    outfile = path.join outdir, path.basename(file, '.java') + '.coffee'
+    outfile = path.join outdir, (path.relative indir, path.dirname(file)), path.basename(file, '.java') + '.coffee'
     ((infile, outfile) ->
       flow.serial (next) ->
         ast = new Ast
