@@ -255,7 +255,7 @@ class Ast # Parser
               # finds end of pairs where nothing inbetween is allowed but the ending can be escaped; e.g., strings
               find_end_of_escaped_pair = (buf, start, match, escape) ->
                 i = start
-                while -1 isnt (i = buf.indexOf match, i+match.length)
+                while -1 isnt (i = buf.indexOf match, i+match.length-1)
                   unless escape and buf[i-escape.length] is escape
                     return i
                 return -1
@@ -552,7 +552,7 @@ class Ast # Parser
     while ++i < len
       symbol = symbol_array[i]
       statement.push symbol_array[i]
-      if symbol.hasType SYMBOL.TERMINATOR, SYMBOL.COMMENT, SYMBOL.SUPPORT, SYMBOL.DOUBLE_SPACE
+      if symbol.hasType SYMBOL.TERMINATOR, SYMBOL.COMMENT, SYMBOL.SUPPORT, SYMBOL.DOUBLE_SPACE, SYMBOL.LEVEL_DEC
         statement.level = symbol.level
         statements.push statement
         statement = []
@@ -569,8 +569,11 @@ class Ast # Parser
 
     i = -1
     len = symbol_array.length
-    local_ids = []
-    scope = [] # class, fn, ...
+    in_class_scope = false
+    in_fn_scope = false
+    global_ids = {}
+    class_ids = {}
+    fn_ids = {}
 
     for statement, y in statements
       # transform some
@@ -605,6 +608,8 @@ class Ast # Parser
             s.push statement[ii].chars
           beginning = false
         s.join ''
+      isLocal = (v) -> fn_ids[v] is 1
+      isGlobal = (v) -> global_ids[v] is 1
       symbol = statement[0]
 
       # package = module.exports
@@ -619,6 +624,7 @@ class Ast # Parser
         file = toString 2
         [nil..., name] = file.split '.'
         out.req += "#{name} = require '#{file.replace /\./g, '/'}'\n"
+        global_ids[name] = 1
         continue
 
       # comments
@@ -639,11 +645,50 @@ class Ast # Parser
           out.classes += "#{indent()}# #{comment}\n"
           continue
 
+      # scope
+      if symbol.hasType(SYMBOL.LEVEL_DEC)
+        if in_fn_scope
+          in_fn_scope = false
+          fn_ids = {}
+        else if in_class_scope
+          in_class_scope = false
+          class_ids = {}
+        continue
+
+      # ids
+      # only if its not preceded by a dot
+      # and only if it is a definition (meaning preceded by a type)
+      #out.classes += '\n'
+      #out.classes += '-- global_ids: '
+      #out.classes += "#{id}, " for own id, nil of global_ids
+      #out.classes += '\n-- class_ids: '
+      #out.classes += "#{id}, " for own id, nil of class_ids
+      #out.classes += '\n-- fn_ids: '
+      #out.classes += "#{id}, " for own id, nil of fn_ids
+      #out.classes +='\n\n'
+      for s, ii in statement
+        if s.hasType SYMBOL.ID
+          # keep definitions in scope registry
+          if statement[ii-1] and
+              statement[ii-1].hasType SYMBOL.TYPE
+            if in_fn_scope
+              fn_ids[s.chars] = 1
+            else if in_class_scope
+              class_ids[s.chars] = 1
+          # top-level id references
+          # may need a @ prefix if not in local scope
+          else if in_class_scope and
+              (statement[ii-1] is undefined) or
+              statement[ii-1].chars isnt CHAR.PERIOD
+            unless isLocal(s.chars) or isGlobal(s.chars)
+              statement[ii].chars = '@'+statement[ii].chars
+
       #'^access+ class id'
       if (x = oneOrMore 1, 'access') and
           (statement[x].chars is 'class') and
           (isA x+2, 'id')
         out.classes += "#{indent()}#{toString x+1} # #{toString 1, x+1}\n"
+        in_class_scope = true
         continue
 
       # function definition
@@ -659,6 +704,7 @@ class Ast # Parser
         fn_params = []
         params_open = false
         console.log JSON.stringify statement
+        in_fn_scope = true
         for ii in [0...statement.length]
           s = statement[ii]
           if s.hasType SYMBOL.ACCESS
