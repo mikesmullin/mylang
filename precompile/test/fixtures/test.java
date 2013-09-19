@@ -17,7 +17,7 @@ public class AccountExtension extends AbstractExtension
   * is loaded in the server.
   */
   @Override
-  public void init()
+  public void init(A a, B b, C[] c)
   {
     ExtensionUtility.debugTrace("init()", 3, CLASS_NAME);
     SbiAbstractHandler.accountExt = this;

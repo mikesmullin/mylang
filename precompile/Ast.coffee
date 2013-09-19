@@ -470,7 +470,7 @@ class Ast # Parser
       if symbol.hasType(SYMBOL.ID) and
           ((n = peek(1)) and n.chars is CHAR.OPEN_PARENTHESIS) and
           (e = find_next(i, -> @chars is CHAR.CLOSE_PARENTHESIS)) and
-          (f = next_non_space(e+1, -> @chars is CHAR.OPEN_BRACE))
+          (symbol_array[e+1].chars is CHAR.OPEN_BRACE)
         n.pushUniqueType SYMBOL.PARAM
         symbol_array[e].pushUniqueType SYMBOL.PARAM
         return
@@ -621,8 +621,41 @@ class Ast # Parser
       if (x = oneOrMore 1, 'access') and
           (statement[x].chars is 'class') and
           (isA x+2, 'id')
-        console.log 'found class'
         out.classes += "#{indent()}#{toString x+1} # #{toString 1, x+1}\n"
+        continue
+
+      # function definition
+      if (x = oneOrMore 1, 'access') and
+          (isA x+1, 'type') and
+          (isA x+2, 'id') and
+          (isA x+3, 'param') and
+          (isA x+3, 'open')
+        # TODO: if function has same name as parent class, rename to 'constructor'
+        param_types = []
+        fn_access_mods = []
+        fn_type = ''
+        params_open = false
+        out.classes += "#{indent()}"
+        for ii in [0...statement.length]
+          s = statement[ii]
+          if s.hasType SYMBOL.TYPE
+            if params_open
+              param_types.push s.chars
+            else
+              fn_type = s.chars
+          else if s.hasType SYMBOL.ACCESS
+            unless params_open
+              fn_access_mods.push s.chars
+          else if s.hasType(SYMBOL.PARAM) and s.hasType(SYMBOL.OPEN)
+            params_open = true
+          else if s.hasType SYMBOL.ID
+            if params_open
+              out.classes += s.chars + ' '
+            else
+              out.classes += s.chars + ': () -> '
+          else if s.hasType SYMBOL.TEXT
+            out.classes += s.chars
+        out.classes += "# #{fn_access_mods.reverse().join ' '} (#{param_types.join ': , '}): #{fn_type}\n"
         continue
 
       #'^access+ type id'
@@ -649,38 +682,7 @@ class Ast # Parser
 
 
 
-    #  # function definition
-    #  if symbol.hasType(SYMBOL.PARAM) and
-    #      symbol.hasType(SYMBOL.OPEN) and
-    #      (p = find_prev_last(i-1, -> @hasType SYMBOL.WORD)) and
-    #      (n = find_next(i, -> @hasType SYMBOL.LEVEL_INC))
-    #    # TODO: if function has same name as parent class, rename to 'constructor'
-    #    param_types = []
-    #    fn_access_mods = []
-    #    fn_type = ''
-    #    params_open = false
-    #    out.classes += "#{indent()}"
-    #    for ii in [p..n]
-    #      s = symbol_array[ii]
-    #      if s.hasType SYMBOL.TYPE
-    #        if params_open
-    #          param_types.push s.chars
-    #        else
-    #          fn_type = s.chars
-    #      else if s.hasType SYMBOL.ACCESS
-    #        unless params_open
-    #          fn_access_mods.push s.chars
-    #      else if s.hasType(SYMBOL.PARAM) and s.hasType(SYMBOL.OPEN)
-    #        params_open = true
-    #      else if s.hasType SYMBOL.ID
-    #        if params_open
-    #          out.classes += s.chars + ' '
-    #        else
-    #          out.classes += s.chars + ': () -> '
-    #      else if s.hasType SYMBOL.TEXT
-    #        out.classes += s.chars
-    #    out.classes += "# #{fn_access_mods.reverse().join ' '} (#{param_types.join ': , '}): #{fn_type}\n"
-    #    return
+
 
     #  # levels
     #  level++ if symbol.hasType SYMBOL.LEVEL_INC
