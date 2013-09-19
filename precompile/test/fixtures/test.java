@@ -32,7 +32,7 @@ public class AccountExtension extends AbstractExtension
   private static final int ACCOUNT_CREATION_THREAD_POOL_SIZE = 2;
 
   private boolean _isDestroyed = false;
-  private ExtensionHelper _sfsExtHelper;
+  private static ExtensionHelper _sfsExtHelper;
   private DatabaseLoggerManager _dbLogger;
   private ThreadTracker _threadTracker;
   private DefDAO _defDAO;
@@ -52,7 +52,7 @@ public class AccountExtension extends AbstractExtension
   * is loaded in the server.
   */
   @Override
-  public void init()
+  public static void init()
   {
     ExtensionUtility.debugTrace("init()", 3, CLASS_NAME);
 

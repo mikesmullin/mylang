@@ -573,6 +573,7 @@ class Ast # Parser
     in_fn_scope = false
     global_ids = {}
     class_ids = {}
+    last_class_id = ''
     fn_ids = {}
 
     for statement, y in statements
@@ -608,6 +609,12 @@ class Ast # Parser
             s.push statement[ii].chars
           beginning = false
         s.join ''
+      hasAccessor = (start, end, accessor) ->
+        for ii in [start-1..end-1]
+          if statement[ii].hasType(SYMBOL.ACCESS) and
+              statement[ii].chars is accessor
+            return true
+        return false
       isLocal = (v) -> fn_ids[v] is 1
       isGlobal = (v) -> global_ids[v] is 1
       symbol = statement[0]
@@ -652,6 +659,7 @@ class Ast # Parser
           fn_ids = {}
         else if in_class_scope
           in_class_scope = false
+          last_class_id = ''
           class_ids = {}
         continue
 
@@ -689,6 +697,7 @@ class Ast # Parser
           (isA x+2, 'id')
         out.classes += "#{indent()}#{toString x+1} # #{toString 1, x+1}\n"
         in_class_scope = true
+        last_class_id = toString x+2, x+3
         continue
 
       # function definition
@@ -723,23 +732,22 @@ class Ast # Parser
               fn_params.push s.chars
         if fn_params.length then fn_params
         fn_params = if fn_params then "(#{fn_params.join ', '})" else ''
-        # TODO: if function has same name as parent class, rename to 'constructor'
-        # TODO: if static accessor used, dont use @ prefix
-        out.classes += "#{indent()}@#{fn_id}: #{fn_params} -> # #{fn_access_mods.reverse().join ' '} (#{param_types.join ', '}): #{fn_type}\n"
+        fn_id = 'constructor' if fn_id is last_class_id
+        # if static accessor used, dont use @ prefix
+        if fn_id[0] is '@' and hasAccessor 1, x, 'static'
+          fn_id = fn_id.substr 1, fn_id.length-1
+        out.classes += "#{indent()}#{fn_id}: #{fn_params} -> # #{fn_access_mods.reverse().join ' '} (#{param_types.join ', '}): #{fn_type}\n"
         continue
 
       #'^access+ type id'
       if (x = oneOrMore 1, 'access') and
           (isA x+1, 'type') and
           (isA x+2, 'id')
-        # if in class scope
-        #   if static
-        #     no @
-        #   else
-        #     @
-        # else
-        #   no @
-        #   push into defined in local scope
+        id = toString x+2, x+3
+        console.log "id is #{id}", in_class_scope: in_class_scope, in_fn_scope: in_fn_scope
+        if in_class_scope and not in_fn_scope
+          if id[0] is '@' and hasAccessor 1, x, 'static' # if static
+            statement[x+1].chars = statement[x+1].chars.substr 1, statement[x+1].chars.length-1 # no @
         out.classes += "#{indent()}#{toString x+2} # #{toString 1, x+1}\n"
       else
         out.classes += "#{indent()}#{toString 1}\n"
