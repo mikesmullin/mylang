@@ -103,7 +103,7 @@ SYMBOL = new Enum ['LINEBREAK','INDENT','WORD','TEXT','KEYWORD',
   'COMMENT','ENDLINE_COMMENT','MULTILINE_COMMENT',
   'CALL','INDEX','PARAM','TERMINATOR','LEVEL_INC','LEVEL_DEC',
   'ACCESS', 'TYPE', 'CAST','GENERIC_TYPE','SUPPORT',
-  'DOUBLE_SPACE']
+  'DOUBLE_SPACE','BLOCK']
 
 OPERATOR = new Enum ['UNARY_LEFT','UNARY_RIGHT','BINARY_LEFT_RIGHT',
   'BINARY_LEFT_LEFT','BINARY_RIGHT_RIGHT','TERNARY_RIGHT_RIGHT_RIGHT']
@@ -112,26 +112,27 @@ OPERATOR = new Enum ['UNARY_LEFT','UNARY_RIGHT','BINARY_LEFT_RIGHT',
 SYNTAX =
   JAVA: # proprietary to java
     KEYWORDS:
-      STATEMENTS: ['case','catch','continue','default','do','else','for','if','finally','goto','return','switch','try','while','throw']
+      STATEMENTS: ['case','catch','continue','default','finally','goto','return','switch','try','throw']
+      BLOCK: ['if','else','for','while','do']
       ACCESS_MODIFIERS: ['abstract','const','private','protected','public','static','synchronized','transient','volatile','final']
       TYPES: ['boolean','double','char','float','int','long','short','void']
       OTHER: ['class','new','import','package','super','this','enum','implements','extends','instanceof','interface','native','strictfp','throws']
     LITERALS: ['false','null','true']
     OPERATORS: [
       { type: OPERATOR.UNARY_LEFT, name: 'postfix', symbols: [ '++', '--' ] }
+      { type: OPERATOR.BINARY_LEFT_RIGHT, name: 'assignment', symbols: ['+=', '-=', '*=', '/=', '%=', '&=', '^=', '|=', '<<=', '>>=', '>>>=', '='] }
       { type: OPERATOR.UNARY_RIGHT, name: 'unary', symbols: ['++', '--', '+', '-', '~', '!'] }
       { type: OPERATOR.BINARY_LEFT_RIGHT, name: 'multiplicative', symbols: ['*', '/', '%'] }
       { type: OPERATOR.BINARY_LEFT_RIGHT, name: 'additive', symbols: ['+', '-'] }
       { type: OPERATOR.BINARY_LEFT_RIGHT, name: 'shift', symbols: ['<<', '>>', '>>>'] }
       { type: OPERATOR.BINARY_LEFT_RIGHT, name: 'relational', symbols: ['<', '>', '<=', '>=', 'instanceof'] }
       { type: OPERATOR.BINARY_LEFT_RIGHT, name: 'equality', symbols: ['==', '!='] }
+      { type: OPERATOR.BINARY_LEFT_RIGHT, name: 'logical AND', symbols: ['&&'] }
       { type: OPERATOR.BINARY_LEFT_RIGHT, name: 'bitwise AND', symbols: ['&'] }
       { type: OPERATOR.BINARY_LEFT_RIGHT, name: 'bitwise exclusive OR', symbols: ['^'] }
       { type: OPERATOR.BINARY_LEFT_RIGHT, name: 'bitwise inclusive OR', symbols: ['|'] }
-      { type: OPERATOR.BINARY_LEFT_RIGHT, name: 'logical AND', symbols: ['&&'] }
       { type: OPERATOR.BINARY_LEFT_RIGHT, name: 'logical OR', symbols: ['||'] }
       { type: OPERATOR.TERNARY_RIGHT_RIGHT_RIGHT, name: 'ternary', symbols: [['?',':']] }
-      { type: OPERATOR.BINARY_LEFT_RIGHT, name: 'assignment', symbols: ['=', '+=', '-=', '*=', '/=', '%=', '&=', '^=', '|=', '<<=', '>>=', '>>>='] }
     ]
     PAIRS: [ # ordered by precendence
       { name: 'multi-line comment', types: [SYMBOL.COMMENT, SYMBOL.MULTILINE_COMMENT], symbols: ['/*', '*/'] }
@@ -362,6 +363,7 @@ class Ast # Parser
               switch group
                 when 'ACCESS_MODIFIERS' then symbol.types = [SYMBOL.ACCESS]
                 when 'TYPES' then symbol.types = [SYMBOL.TYPE]
+                when 'BLOCK' then symbol.pushUniqueType SYMBOL.BLOCK
               return
 
           # literals
@@ -431,6 +433,18 @@ class Ast # Parser
           (symbol.hasType SYMBOL.LINEBREAK, SYMBOL.INDENT)
         ;
       return if test.call symbol then ii else false
+    next_matching_pair = (n, open_test, close_test) ->
+      ii = n
+      open_count = 0
+      while ++ii < len and (symbol = symbol_array[ii])
+        if open_test.call symbol
+          open_count++
+        else if close_test.call symbol
+          open_count--
+          if open_count is 0
+            return ii+1
+      return false # missing pair!
+
     next_symbol = =>
       symbol = symbol_array[i]
       return if symbol is undefined
@@ -476,6 +490,7 @@ class Ast # Parser
 
       # cast
       if symbol.hasType(SYMBOL.ID) and
+          symbol.chars[0].match(/A-Z/) and
           ((p = peek(-1)) and p.chars is CHAR.OPEN_PARENTHESIS) and
           ((n = peek(1)) and n.chars is CHAR.CLOSE_PARENTHESIS)
         symbol.pushUniqueType SYMBOL.TYPE
@@ -506,9 +521,20 @@ class Ast # Parser
       # index
       if symbol.hasType(SYMBOL.ID) and
           ((n = peek(1)) and n.chars is CHAR.OPEN_BRACKET) and
-          (e = find_next(i, -> @chars is CHAR.CLOSE_BRACKET))
+          (e = find_next(i+1, -> @chars is CHAR.CLOSE_BRACKET))
         n.pushUniqueType SYMBOL.INDEX
         symbol_array[e].pushUniqueType SYMBOL.INDEX
+        return
+
+      # implicit block
+      if symbol.hasType(SYMBOL.BLOCK) and
+          ((n = peek(1)) and n.chars is CHAR.OPEN_PARENTHESIS) and
+          (e = next_matching_pair(i+1, (-> @chars is CHAR.OPEN_PARENTHESIS), -> @chars is CHAR.CLOSE_PARENTHESIS)) and
+          (symbol_array[e+1].chars isnt CHAR.OPEN_BRACE) and
+          (f = find_next(e+1, -> @hasType SYMBOL.STATEMENT_END))
+        symbol_array.splice e+1, 0, new Symbol CHAR.OPEN_BRACE, [SYMBOL.BRACE, SYMBOL.PAIR, SYMBOL.OPEN, SYMBOL.LEVEL_INC]
+        symbol_array.splice f+2, 0, new Symbol CHAR.CLOSE_BRACE, [SYMBOL.BRACE, SYMBOL.PAIR, SYMBOL.CLOSE, SYMBOL.LEVEL_DEC]
+        len+=2
         return
 
       # level++
@@ -686,8 +712,8 @@ class Ast # Parser
           # top-level id references
           # may need a @ prefix if not in local scope
           if in_class_scope and
-              (statement[ii-1] is undefined) or
-              statement[ii-1].chars isnt CHAR.PERIOD
+              (statement[ii-1] is undefined or
+              statement[ii-1].chars isnt CHAR.PERIOD)
             unless isLocal(s.chars) or isGlobal(s.chars)
               statement[ii].chars = '@'+statement[ii].chars
 
@@ -744,7 +770,6 @@ class Ast # Parser
           (isA x+1, 'type') and
           (isA x+2, 'id')
         id = toString x+2, x+3
-        console.log "id is #{id}", in_class_scope: in_class_scope, in_fn_scope: in_fn_scope
         if in_class_scope and not in_fn_scope
           if id[0] is '@' and hasAccessor 1, x, 'static' # if static
             statement[x+1].chars = statement[x+1].chars.substr 1, statement[x+1].chars.length-1 # no @
@@ -755,7 +780,7 @@ class Ast # Parser
       # any id not prefixed by a \.:
       #  @ unless part of requires or defined in local scope
 
-    #@pretty_print_symbol_array symbol_array
+    @pretty_print_symbol_array symbol_array
     out = "#{out.req}\n#{out.mod}\n#{out.classes}\n"
     console.log "--- OUTPUT:------\n\n#{out}"
     #console.log "--- IDs:-----\n\n", JSON.stringify ids, null, 2
