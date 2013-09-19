@@ -120,18 +120,18 @@ SYNTAX =
     LITERALS: ['false','null','true']
     OPERATORS: [
       { type: OPERATOR.UNARY_LEFT, name: 'postfix', symbols: [ '++', '--' ] }
-      { type: OPERATOR.BINARY_LEFT_RIGHT, name: 'assignment', symbols: ['+=', '-=', '*=', '/=', '%=', '&=', '^=', '|=', '<<=', '>>=', '>>>=', '='] }
+      { type: OPERATOR.BINARY_LEFT_RIGHT, name: 'equality', symbols: ['==', '!='] }
+      { type: OPERATOR.BINARY_LEFT_RIGHT, name: 'assignment', symbols: ['+=', '-=', '*=', '/=', '%=', '&=', '^=', '|=', '<<=', '>>=', '>>>='] }
       { type: OPERATOR.UNARY_RIGHT, name: 'unary', symbols: ['++', '--', '+', '-', '~', '!'] }
       { type: OPERATOR.BINARY_LEFT_RIGHT, name: 'multiplicative', symbols: ['*', '/', '%'] }
       { type: OPERATOR.BINARY_LEFT_RIGHT, name: 'additive', symbols: ['+', '-'] }
       { type: OPERATOR.BINARY_LEFT_RIGHT, name: 'shift', symbols: ['<<', '>>', '>>>'] }
-      { type: OPERATOR.BINARY_LEFT_RIGHT, name: 'relational', symbols: ['<', '>', '<=', '>=', 'instanceof'] }
-      { type: OPERATOR.BINARY_LEFT_RIGHT, name: 'equality', symbols: ['==', '!='] }
+      { type: OPERATOR.BINARY_LEFT_RIGHT, name: 'relational', symbols: ['<=', '>=', '<', '>', 'instanceof', '='] } # had to move = here so it would get matched last. operator precendence doesnt matter for us since we're transpiling not fully compiling
       { type: OPERATOR.BINARY_LEFT_RIGHT, name: 'logical AND', symbols: ['&&'] }
       { type: OPERATOR.BINARY_LEFT_RIGHT, name: 'bitwise AND', symbols: ['&'] }
       { type: OPERATOR.BINARY_LEFT_RIGHT, name: 'bitwise exclusive OR', symbols: ['^'] }
-      { type: OPERATOR.BINARY_LEFT_RIGHT, name: 'bitwise inclusive OR', symbols: ['|'] }
       { type: OPERATOR.BINARY_LEFT_RIGHT, name: 'logical OR', symbols: ['||'] }
+      { type: OPERATOR.BINARY_LEFT_RIGHT, name: 'bitwise inclusive OR', symbols: ['|'] }
       { type: OPERATOR.TERNARY_RIGHT_RIGHT_RIGHT, name: 'ternary', symbols: [['?',':']] }
     ]
     PAIRS: [ # ordered by precendence
@@ -227,7 +227,7 @@ class Ast # Parser
         indent_type_this_line = undefined
         double_space = true
       return
-    is_pair = ->
+    is_pair = (high_precedence=false) ->
       for pair in SYNTAX.JAVA.PAIRS
         for search, k in pair.symbols
           if search is peek 0, search.length
@@ -237,41 +237,44 @@ class Ast # Parser
 
             # some pairs require that we find their endings immediately
             # e.g., comments
-            if symbol.hasType SYMBOL.COMMENT
-              if pair.symbols.length is 1 # no ending symbol means match to EOL
-                x = zbyte; while ++x < len and false is is_eol(x) # EOL or EOF whichever is first
-                  ;
-                symbol.chars = buf.substr zbyte, x-zbyte
-                return [symbol, x-zbyte]
-              else
-                # finds end of pairs where nothing inbetween is allowed and the end cannot be escaped
-                if -1 isnt x = buf.indexOf pair.symbols[1], zbyte + search.length + pair.symbols[1].length
-                  symbol.chars = buf.substr zbyte, x-zbyte+pair.symbols[1].length
-                  return [symbol, x-zbyte+pair.symbols[1].length]
+            if high_precedence
+              if symbol.hasType SYMBOL.COMMENT
+                if pair.symbols.length is 1 # no ending symbol means match to EOL
+                  x = zbyte; while ++x < len and false is is_eol(x) # EOL or EOF whichever is first
+                    ;
+                  symbol.chars = buf.substr zbyte, x-zbyte
+                  return [symbol, x-zbyte]
                 else
-                  throwError "unmatched comment pair \"#{search}\""
+                  # finds end of pairs where nothing inbetween is allowed and the end cannot be escaped
+                  if -1 isnt x = buf.indexOf pair.symbols[1], zbyte + search.length + pair.symbols[1].length
+                    symbol.chars = buf.substr zbyte, x-zbyte+pair.symbols[1].length
+                    return [symbol, x-zbyte+pair.symbols[1].length]
+                  else
+                    throwError "unmatched comment pair \"#{search}\""
 
-            # e.g., strings
-            if symbol.hasType SYMBOL.STRING
-              # finds end of pairs where nothing inbetween is allowed but the ending can be escaped; e.g., strings
-              find_end_of_escaped_pair = (buf, start, match, escape) ->
-                i = start
-                while -1 isnt (i = buf.indexOf match, i+match.length-1)
-                  unless escape and buf[i-escape.length] is escape
-                    return i
-                return -1
-              if -1 isnt x = find_end_of_escaped_pair buf, zbyte+1, pair.symbols[1], pair.escaped_by
-                symbol.chars = buf.substr zbyte, x-zbyte+1
-                return [symbol, x-zbyte+1]
-              else
-                throwError "unmatched string pair \"#{search}\""
-
-            # remaining pairs dont require us to find the ending
-            # so we just mark them with separate opening and closing symbols
-            symbol.pushUniqueType SYMBOL.PAIR
-            symbol.pushUniqueType SYMBOL.OPEN if k is 0 or pair.symbols[0] is pair.symbols[1]
-            symbol.pushUniqueType SYMBOL.CLOSE if k is 1 or pair.symbols[0] is pair.symbols[1]
-            return [symbol, search.length]
+              # e.g., strings
+              if symbol.hasType SYMBOL.STRING
+                # finds end of pairs where nothing inbetween is allowed but the ending can be escaped; e.g., strings
+                find_end_of_escaped_pair = (buf, start, match, escape) ->
+                  i = start
+                  while -1 isnt (i = buf.indexOf match, i+match.length-1)
+                    unless escape and
+                        buf.substr(i-escape.length, escape.length) is escape and
+                        buf.substr(i-(escape.length*2), escape.length) isnt escape
+                      return i
+                  return -1
+                if -1 isnt x = find_end_of_escaped_pair buf, zbyte+1, pair.symbols[1], pair.escaped_by
+                  symbol.chars = buf.substr zbyte, x-zbyte+1
+                  return [symbol, x-zbyte+1]
+                else
+                  throwError "unmatched string pair \"#{search}\""
+            else
+              # remaining pairs dont require us to find the ending
+              # so we just mark them with separate opening and closing symbols
+              symbol.pushUniqueType SYMBOL.PAIR
+              symbol.pushUniqueType SYMBOL.OPEN if k is 0 or pair.symbols[0] is pair.symbols[1]
+              symbol.pushUniqueType SYMBOL.CLOSE if k is 1 or pair.symbols[0] is pair.symbols[1]
+              return [symbol, search.length]
     is_operator = ->
       for operator in SYNTAX.JAVA.OPERATORS
         for search in operator.symbols
@@ -310,7 +313,22 @@ class Ast # Parser
         else # non-word character
           slice_word_buf()
 
-          if r = is_pair()
+          # pair::high_precendence
+          if r = is_pair true
+            [symbol, x] = r
+            symbol_array.push symbol
+            zbyte += x-1 # skip ahead
+            continue
+
+          # operator
+          if r = is_operator()
+            [symbol, x] = r
+            symbol_array.push symbol
+            zbyte += x-1 # skip ahead
+            continue
+
+          # pair::low_precendence
+          if r = is_pair false
             [symbol, x] = r
             symbol_array.push symbol
             zbyte += x-1 # skip ahead
@@ -320,13 +338,6 @@ class Ast # Parser
           if c is CHAR.SEMICOLON
             double_space = false
             symbol_array.push new Symbol c, [SYMBOL.STATEMENT_END], line: line, char: char, byte: byte
-            continue
-
-          # operators
-          if r = is_operator()
-            [symbol, x] = r
-            symbol_array.push symbol
-            zbyte += x-1 # skip ahead
             continue
 
           nonword_buf += c
@@ -626,7 +637,8 @@ class Ast # Parser
         beginning = true
         last_had_space = false
         for ii in [start-1...end-1]
-          if statement[ii].hasType SYMBOL.OP, SYMBOL.KEYWORD, SYMBOL.ACCESS, SYMBOL.TYPE
+          if statement[ii].hasType(SYMBOL.KEYWORD, SYMBOL.ACCESS, SYMBOL.TYPE) or
+              statement[ii].hasType(SYMBOL.OP) and statement[ii].chars isnt CHAR.EXCLAIMATION
             if beginning or last_had_space
               s.push statement[ii].chars+' '
             else
