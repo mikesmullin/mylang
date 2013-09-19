@@ -442,7 +442,7 @@ class Ast # Parser
         else if close_test.call symbol
           open_count--
           if open_count is 0
-            return ii+1
+            return ii
       return false # missing pair!
 
     next_symbol = =>
@@ -530,6 +530,7 @@ class Ast # Parser
       if symbol.hasType(SYMBOL.BLOCK) and
           ((n = peek(1)) and n.chars is CHAR.OPEN_PARENTHESIS) and
           (e = next_matching_pair(i, (-> @chars is CHAR.OPEN_PARENTHESIS), -> @chars is CHAR.CLOSE_PARENTHESIS)) and
+          ((symbol_array[e+1].hasType SYMBOL.ENDLINE_COMMENT) and e++) and
           (symbol_array[e+1].chars isnt CHAR.OPEN_BRACE) and
           (f = find_next(e+1, -> @hasType SYMBOL.STATEMENT_END))
         symbol_array.splice e+1, 0, new Symbol CHAR.OPEN_BRACE, [SYMBOL.BRACE, SYMBOL.PAIR, SYMBOL.OPEN, SYMBOL.LEVEL_INC]
@@ -576,13 +577,16 @@ class Ast # Parser
     statements = []
     statement = []
     last_level = 0
+    last_symbol = null
     while ++i < len
       symbol = symbol_array[i]
       statement.push symbol_array[i]
-      if symbol.hasType SYMBOL.TERMINATOR, SYMBOL.COMMENT, SYMBOL.SUPPORT, SYMBOL.DOUBLE_SPACE, SYMBOL.LEVEL_DEC
+      if symbol.hasType(SYMBOL.TERMINATOR, SYMBOL.MULTILINE_COMMENT, SYMBOL.SUPPORT, SYMBOL.DOUBLE_SPACE, SYMBOL.LEVEL_DEC) or
+          last_symbol and last_symbol.hasType(SYMBOL.TERMINATOR) and symbol.hasType(SYMBOL.ENDLINE_COMMENT)
         last_level = statement.level = symbol.level
         statements.push statement
         statement = []
+      last_symbol = symbol
     if statement.length
       statement.level = last_level + 1 # TODO: this may not always work
       statements.push statement
