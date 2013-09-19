@@ -541,7 +541,7 @@ class Ast # Parser
       if symbol.hasType(SYMBOL.BLOCK) and
           ((n = peek(1)) and n.chars is CHAR.OPEN_PARENTHESIS) and
           (e = next_matching_pair(i, (-> @chars is CHAR.OPEN_PARENTHESIS), -> @chars is CHAR.CLOSE_PARENTHESIS)) and
-          ((symbol_array[e+1].hasType SYMBOL.ENDLINE_COMMENT) and e++) and
+          (((symbol_array[e+1].hasType SYMBOL.ENDLINE_COMMENT) and e++) or 1) and
           (symbol_array[e+1].chars isnt CHAR.OPEN_BRACE) and
           (f = find_next(e+1, -> @hasType SYMBOL.STATEMENT_END))
         symbol_array.splice e+1, 0, new Symbol CHAR.OPEN_BRACE, [SYMBOL.BRACE, SYMBOL.PAIR, SYMBOL.OPEN, SYMBOL.LEVEL_INC]
@@ -750,11 +750,12 @@ class Ast # Parser
         continue
 
       # function definition
-      if (x = oneOrMore 1, 'access') and
-          (isA x+1, 'type') and
-          (isA x+2, 'id') and
-          (isA x+3, 'param') and
-          (isA x+3, 'open')
+      iii = 1
+      if ((x = oneOrMore 1, 'access') or (x=0) or 1) and # optional access modifier
+          ((isA x+iii, 'type') or (iii=0) or 1) and # optional type
+          (isA x+iii+1, 'id') and
+          (isA x+iii+2, 'param') and
+          (isA x+iii+2, 'open')
         param_types = []
         fn_access_mods = []
         fn_type = ''

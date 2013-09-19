@@ -1,8 +1,32 @@
 public class AccountExtension extends AbstractExtension
 {
-  public void a() {
-    // any password policy enforcement goes here
-    if (password.length() < SbiConstants.MIN_PASSWORD_LEN)  // TODO: auto-sync password policy with SGE?
-      return SbiConstants.MSG_ID_PASSWORD_INVALID;
+  private class AccountCreationTask implements Runnable
+  {
+    private final User _sfsUser;
+    private final String _cmd;
+    private final String[] _params;
+
+    public AccountCreationTask(User sfsUser, String cmd, String[] params)
+    {
+      _sfsUser = sfsUser;
+      _cmd = cmd;
+      _params = params;
+    }
+
+    public void run()
+    {
+      if (_cmd.equals("la"))
+      {
+        handleLoginAvailable(_sfsUser, _params);
+      }
+      else if (_cmd.equals("lc"))
+      {
+        handleLoginCreate(_sfsUser, _params);
+      }
+      else
+      {
+        ExtensionUtility.debugTrace("WARNING: unsupported cmd put in ExtensionCommandQueue: "+_cmd, 0, CLASS_NAME);
+      }
+    }
   }
 }
