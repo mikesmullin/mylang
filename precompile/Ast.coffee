@@ -677,7 +677,7 @@ class Ast # Parser
               class_ids[s.chars] = 1
           # top-level id references
           # may need a @ prefix if not in local scope
-          else if in_class_scope and
+          if in_class_scope and
               (statement[ii-1] is undefined) or
               statement[ii-1].chars isnt CHAR.PERIOD
             unless isLocal(s.chars) or isGlobal(s.chars)
@@ -703,7 +703,6 @@ class Ast # Parser
         fn_id = ''
         fn_params = []
         params_open = false
-        console.log JSON.stringify statement
         in_fn_scope = true
         for ii in [0...statement.length]
           s = statement[ii]
@@ -748,7 +747,7 @@ class Ast # Parser
       # any id not prefixed by a \.:
       #  @ unless part of requires or defined in local scope
 
-    @pretty_print_symbol_array symbol_array
+    #@pretty_print_symbol_array symbol_array
     out = "#{out.req}\n#{out.mod}\n#{out.classes}\n"
     console.log "--- OUTPUT:------\n\n#{out}"
     #console.log "--- IDs:-----\n\n", JSON.stringify ids, null, 2
