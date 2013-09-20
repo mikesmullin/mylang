@@ -836,8 +836,8 @@ class Ast # Parser
         fn_params = if fn_params.length then "(#{fn_params.join ', '}) " else ''
         fn_param_types = unless fn_param_types.length then ['void'] else fn_param_types
         fn_id = 'constructor' if fn_id.replace(/^@/,'') is last_class_id[last_class_id.length-1]
-        if fn_id[0] is '@' and hasAccessor a.pos, a.end, 'static' # if static access modifier used
-          fn_id = fn_id.substr 1, fn_id.length-1 # don't use '@' prefix
+        if fn_id[0] is '@' and not hasAccessor a.pos, a.end, 'static' # unless static access modifier used
+          fn_id = fn_id.substr 1, fn_id.length-1 # remove @ prefix; its only for static
         for ii in [statement.length-1..0]
           s = statement[ii]
           unless statement[ii].types[0] is SYMBOL.COMMENT
@@ -852,8 +852,8 @@ class Ast # Parser
           (i = match 'exactlyOne', -> @isA 'id')
         id = i.matches[0].chars
         if in_class_scope and not in_fn_scope
-          if id[0] is '@' and hasAccessor a.pos, a.end, 'static' # if static
-            i.matches[0].chars = id.substr 1, id.length-1 # remove @ prefix
+          if id[0] is '@' and not hasAccessor a.pos, a.end, 'static' # unless static access modifier used
+            i.matches[0].chars = id.substr 1, id.length-1 # remove @ prefix; its only for static
         # remove access modifiers and types from the statement
         pluckFromStatement removed = a.matches.concat(t.matches)
         out.classes += "#{indent()}#{toString()} # #{joinTokens removed, ' '}\n"
