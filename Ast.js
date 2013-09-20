@@ -940,7 +940,7 @@ Ast = (function() {
             continue;
           }
           if (matches = test_fn.call(s)) {
-            result.tail = s.statement_pos = index;
+            result.end = s.statement_pos = index;
             result.matches.push(s);
             cursor = index + 1;
           }
