@@ -880,5 +880,5 @@ class Ast # Parser
       process.stdout.write toString symbol
     process.stdout.write "\n"
 
-if module
+if 'function' is typeof require and typeof exports is typeof module
   module.exports = Ast
