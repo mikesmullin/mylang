@@ -680,7 +680,7 @@ class Ast # Parser
                 .replace(/^[\t ]*\*[\t ]*/mg, '') # middle
                 .replace(/\/\*\*?/, '') # top
                 .replace(/^/mg, indent()) # indent
-              o.push "####{comment}### "
+              o.push "####{comment}###\n"
               continue
             # single-line
             else if s.hasType SYMBOL.ENDLINE_COMMENT, SYMBOL.SUPPORT
