@@ -28,13 +28,13 @@
       <h4 class="centerYoText">Type or paste in Java on the left and it'll be transpiled to CoffeeScript on the right </h4>
       <div class="col-md-6">
         <h2 class="centerYoText">Java</h2>
-        <div class="editor java">public class Bicycle {
+        <div class="editor java">public class Bicycle extends Ride implements Sweet {
   // the Bicycle class has
   // three fields
-  public int cadence;
+  public static int cadence;
   public int gear;
   public int speed;
-  
+
   // the Bicycle class has
   // one constructor
   public Bicycle(int startCadence, int startSpeed, int startGear) {
@@ -42,21 +42,21 @@
     cadence = startCadence;
     speed = startSpeed;
   }
-      
+
   // the Bicycle class has
   // four methods
-  public void setCadence(int newValue) {
+  public static void setCadence(int newValue) {
     cadence = newValue;
   }
-      
+
   public void setGear(int newValue) {
     gear = newValue;
   }
-      
+
   public void applyBrake(int decrement) {
     speed -= decrement;
   }
-      
+
   public void speedUp(int increment) {
     speed += increment;
   }
