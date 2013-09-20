@@ -710,7 +710,7 @@ class Ast # Parser
               statement[ii].chars is accessor
             return true
         return false
-      isLocal = (v) -> fn_ids[v] is 1
+      isLocal = (v) -> fn_ids[v] <= in_fn_scope
       isGlobal = (v) -> global_ids[v] is 1
       symbol = statement[0]
 
@@ -825,6 +825,8 @@ class Ast # Parser
               fn_id = s.chars
             else
               fn_params.push s.chars
+              fn_ids[s.chars] = in_fn_scope
+
         # remove everything from the statement except comments
         if fn_params.length then fn_params
         fn_params = if fn_params.length then "(#{fn_params.join ', '}) " else ''
