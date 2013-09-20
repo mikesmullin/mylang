@@ -1,5 +1,3 @@
-# HACK: pulling out fs so we can run this in a browser
-# fs = require 'fs'
 deepCopy = (obj) ->
   if Object::toString.call(obj) is "[object Array]"
     out = []
@@ -148,11 +146,9 @@ SYNTAX =
     ]
 
 
-# HACK: pulling out module so we can run this in a browser
-# module.exports =
 class Ast # Parser
-  # NOTE: this function will fail when run in the browser (because there's no fs module)
   open: (file, cb) ->
+    return unless require and (fs = require('fs'))
     fs.readFile file, encoding: 'utf8', flag: 'r', (err, data) =>
       throw err if err
       code = @compile file, data
@@ -837,3 +833,6 @@ class Ast # Parser
         process.stdout.write "\n"
       process.stdout.write toString symbol
     process.stdout.write "\n"
+
+if module
+  module.exports = Ast
