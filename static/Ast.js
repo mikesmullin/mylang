@@ -936,7 +936,7 @@ Ast = (function() {
           matches: []
         };
         while (s = statement[++index]) {
-          if (s.isA('comment')) {
+          if (s.hasType(SYMBOL.COMMENT, SYMBOL.SUPPORT)) {
             continue;
           }
           if (matches = test_fn.call(s)) {
@@ -980,7 +980,7 @@ Ast = (function() {
           if (s.hasType(SYMBOL.COMMENT, SYMBOL.SUPPORT)) {
             if (s.hasType(SYMBOL.MULTILINE_COMMENT)) {
               comment = s.chars.replace(/^[\t ]*\*\//m, '').replace(/^[\t ]*\*[\t ]*/mg, '').replace(/\/\*\*?/, '').replace(/^/mg, indent());
-              o.push("###" + comment + "###\n");
+              o.push("###" + comment + "###\n" + (indent()));
               continue;
             } else if (s.hasType(SYMBOL.ENDLINE_COMMENT, SYMBOL.SUPPORT)) {
               comment = s.chars.replace(/^\s*\/\/\s*/mg, '');
@@ -1035,7 +1035,7 @@ Ast = (function() {
         return this.chars === 'import';
       })) {
         file = toString(1).split('.');
-        out.req += "" + file[file.length] + " = require '" + (file.replace('.', '/')) + "'\n";
+        out.req += "" + file[file.length - 1] + " = require '" + (file.join('/')) + "'\n";
         global_ids[name] = 1;
         continue;
       }

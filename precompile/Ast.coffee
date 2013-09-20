@@ -651,7 +651,7 @@ class Ast # Parser
           end: cursor # ending index of matches
           matches: [] # matching tokens
         while s = statement[++index]
-          continue if s.isA 'comment' # ignore comments
+          continue if s.hasType SYMBOL.COMMENT, SYMBOL.SUPPORT # ignore comments
           if matches = test_fn.call s
             result.end = s.statement_pos = index
             result.matches.push s
@@ -680,7 +680,7 @@ class Ast # Parser
                 .replace(/^[\t ]*\*[\t ]*/mg, '') # middle
                 .replace(/\/\*\*?/, '') # top
                 .replace(/^/mg, indent()) # indent
-              o.push "####{comment}###\n"
+              o.push "####{comment}###\n#{indent()}"
               continue
             # single-line
             else if s.hasType SYMBOL.ENDLINE_COMMENT, SYMBOL.SUPPORT
@@ -726,7 +726,7 @@ class Ast # Parser
       cursor = 0 # reset
       if (match 'exactlyOne', -> @chars is 'import')
         file = toString(1).split '.'
-        out.req += "#{file[file.length]} = require '#{file.replace '.', '/'}'\n"
+        out.req += "#{file[file.length-1]} = require '#{file.join '/'}'\n"
         global_ids[name] = 1
         continue
 
