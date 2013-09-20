@@ -861,7 +861,7 @@ Ast = (function() {
   };
 
   Ast.prototype.translate_to_coffee = function(symbol_array) {
-    var a, class_ids, cursor, file, fn_access_mods, fn_comment, fn_id, fn_ids, fn_param_types, fn_params, fn_params_open, fn_type, global_ids, hasAccessor, i, id, ii, in_class_scope, in_fn_scope, in_param_scope, indent, isGlobal, isLocal, joinTokens, last_class_id, last_level, len, lvl, match, out, p, pluckFromStatement, prev, removed, repeat, s, slice_statement_buf, statement, statements, symbol, t, toString, token, y, _i, _j, _k, _l, _len, _len1, _len2, _m, _ref, _ref1;
+    var a, class_ids, cursor, file, fn_access_mods, fn_comment, fn_id, fn_ids, fn_param_types, fn_params, fn_params_open, fn_type, global_ids, hasAccessor, i, id, ii, in_class_scope, in_fn_scope, in_param_scope, indent, isGlobal, isLocal, joinTokens, last_class_id, last_level, len, lvl, match, name, out, p, pluckFromStatement, prev, removed, repeat, s, slice_statement_buf, statement, statements, symbol, t, toString, token, y, _i, _j, _k, _l, _len, _len1, _len2, _m, _ref, _ref1;
     i = -1;
     statement = [];
     last_level = 0;
@@ -874,7 +874,7 @@ Ast = (function() {
         statements.push(statement);
         return statement = [];
       };
-      if (symbol.hasType(SYMBOL.LEVEL_DEC, SYMBOL.TERMINATOR, SYMBOL.DOUBLE_SPACE)) {
+      if (symbol.hasType(SYMBOL.LEVEL_DEC, SYMBOL.TERMINATOR, SYMBOL.DOUBLE_SPACE, SYMBOL.SUPPORT)) {
         statement.push(symbol);
         slice_statement_buf(symbol.level);
       } else {
@@ -962,7 +962,7 @@ Ast = (function() {
         }
       };
       toString = function(start, end) {
-        var beginning, comment, ii, last_had_space, o, s, _j;
+        var beginning, comment, ii, last_had_space, o, s, space, _j;
         if (start == null) {
           start = 0;
         }
@@ -979,12 +979,13 @@ Ast = (function() {
           s = statement[ii];
           if (s.hasType(SYMBOL.COMMENT, SYMBOL.SUPPORT)) {
             if (s.hasType(SYMBOL.MULTILINE_COMMENT)) {
-              comment = s.chars.replace(/^[\t ]*\*\//m, '').replace(/^[\t ]*\*[\t ]*/mg, '').replace(/\/\*\*?/, '').replace(/^/mg, indent());
+              comment = s.chars.replace(/^[\t ]*\*\//m, '').replace(/^[\t ]*\*[\t ]*/mg, '').replace(/\/\*\*?/, '').replace(/^/mg, indent()).replace(/[\r\n]+$/, '\n');
               o.push("###" + comment + "###\n" + (indent()));
               continue;
             } else if (s.hasType(SYMBOL.ENDLINE_COMMENT, SYMBOL.SUPPORT)) {
               comment = s.chars.replace(/^\s*\/\/\s*/mg, '');
-              o.push("# " + comment + "\n" + (indent()));
+              space = ii === statement.length - 1 ? '' : "\n" + (indent());
+              o.push("# " + comment + space);
               continue;
             }
           }
@@ -1093,7 +1094,9 @@ Ast = (function() {
       })) && (i = match('exactlyOne', function() {
         return this.isA('id');
       }))) {
-        last_class_id.push(i.matches[0].chars);
+        name = i.matches[0].chars;
+        last_class_id.push(name);
+        global_ids[name] = 1;
         pluckFromStatement(removed = a.matches);
         for (ii = _k = 0, _len2 = statement.length; _k < _len2; ii = ++_k) {
           token = statement[ii];
