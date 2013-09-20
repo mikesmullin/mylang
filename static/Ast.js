@@ -980,7 +980,7 @@ Ast = (function() {
           if (s.hasType(SYMBOL.COMMENT, SYMBOL.SUPPORT)) {
             if (s.hasType(SYMBOL.MULTILINE_COMMENT)) {
               comment = s.chars.replace(/^[\t ]*\*\//m, '').replace(/^[\t ]*\*[\t ]*/mg, '').replace(/\/\*\*?/, '').replace(/^/mg, indent());
-              o.push("###" + comment + "### ");
+              o.push("###" + comment + "###\n");
               continue;
             } else if (s.hasType(SYMBOL.ENDLINE_COMMENT, SYMBOL.SUPPORT)) {
               comment = s.chars.replace(/^\s*\/\/\s*/mg, '');
@@ -1155,7 +1155,7 @@ Ast = (function() {
         if (fn_id.replace(/^@/, '') === last_class_id[last_class_id.length - 1]) {
           fn_id = 'constructor';
         }
-        if (fn_id[0] === '@' && hasAccessor(a.pos, a.end, 'static')) {
+        if (fn_id[0] === '@' && !hasAccessor(a.pos, a.end, 'static')) {
           fn_id = fn_id.substr(1, fn_id.length - 1);
         }
         for (ii = _m = _ref1 = statement.length - 1; _ref1 <= 0 ? _m <= 0 : _m >= 0; ii = _ref1 <= 0 ? ++_m : --_m) {
@@ -1177,7 +1177,7 @@ Ast = (function() {
       }))) {
         id = i.matches[0].chars;
         if (in_class_scope && !in_fn_scope) {
-          if (id[0] === '@' && hasAccessor(a.pos, a.end, 'static')) {
+          if (id[0] === '@' && !hasAccessor(a.pos, a.end, 'static')) {
             i.matches[0].chars = id.substr(1, id.length - 1);
           }
         }
