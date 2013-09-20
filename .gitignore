@@ -1,3 +1,4 @@
 node_modules/
 static/*
 precompile/test/fixtures/AccountExtension.java
+libpeerconnection.log
