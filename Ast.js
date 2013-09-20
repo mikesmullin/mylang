@@ -129,6 +129,10 @@ Symbol = (function() {
     return false;
   };
 
+  Symbol.prototype.isA = function(str_type) {
+    return this.hasType(SYMBOL[str_type.toUpperCase()]);
+  };
+
   Symbol.prototype.removeType = function(type) {
     var i, _i, _len, _ref, _type;
     _ref = this.types;
@@ -330,7 +334,11 @@ Ast = (function() {
   function Ast() {}
 
   Ast.prototype.open = function(file, cb) {
-    var _this = this;
+    var fs,
+      _this = this;
+    if (!(require && (fs = require('fs')))) {
+      return;
+    }
     fs.readFile(file, {
       encoding: 'utf8',
       flag: 'r'
@@ -853,27 +861,28 @@ Ast = (function() {
   };
 
   Ast.prototype.translate_to_coffee = function(symbol_array) {
-    var class_ids, comment, file, fn_access_mods, fn_comment, fn_id, fn_ids, fn_params, fn_type, global_ids, hasAccessor, i, id, ii, iii, in_class_scope, in_fn_scope, indent, isA, isGlobal, isLocal, last_class_id, last_level, last_symbol, len, name, nil, oneOrMore, out, param_types, params_open, repeat, s, statement, statements, symbol, toString, toToken, x, y, _i, _j, _k, _l, _len, _len1, _len2, _m, _ref, _ref1;
+    var a, class_ids, cursor, file, fn_access_mods, fn_comment, fn_id, fn_ids, fn_param_types, fn_params, fn_params_open, fn_type, global_ids, hasAccessor, i, id, ii, in_class_scope, in_fn_scope, in_param_scope, indent, isGlobal, isLocal, joinTokens, last_class_id, last_level, len, lvl, match, out, p, pluckFromStatement, prev, removed, repeat, s, slice_statement_buf, statement, statements, symbol, t, toString, token, y, _i, _j, _k, _l, _len, _len1, _len2, _m, _ref, _ref1;
     i = -1;
-    len = symbol_array.length;
-    statements = [];
     statement = [];
     last_level = 0;
-    last_symbol = null;
+    statements = [];
+    len = symbol_array.length;
     while (++i < len) {
       symbol = symbol_array[i];
-      statement.push(symbol_array[i]);
-      if (symbol.hasType(SYMBOL.TERMINATOR, SYMBOL.MULTILINE_COMMENT, SYMBOL.SUPPORT, SYMBOL.DOUBLE_SPACE, SYMBOL.LEVEL_DEC) || last_symbol && last_symbol.hasType(SYMBOL.TERMINATOR) && symbol.hasType(SYMBOL.ENDLINE_COMMENT)) {
-        last_level = statement.level = symbol.level;
+      slice_statement_buf = function(level) {
+        last_level = statement.level = level;
         statements.push(statement);
-        statement = [];
+        return statement = [];
+      };
+      if (symbol.hasType(SYMBOL.LEVEL_DEC, SYMBOL.TERMINATOR, SYMBOL.DOUBLE_SPACE)) {
+        statement.push(symbol);
+        slice_statement_buf(symbol.level);
+      } else {
+        statement.push(symbol);
       }
-      last_symbol = symbol;
     }
     if (statement.length) {
-      statement.level = last_level + 1;
-      statements.push(statement);
-      statement = [];
+      slice_statement_buf(last_level + 1);
     }
     out = {
       req: '',
@@ -890,65 +899,117 @@ Ast = (function() {
     };
     i = -1;
     len = symbol_array.length;
-    in_class_scope = false;
-    in_fn_scope = false;
+    in_class_scope = 0;
+    in_fn_scope = 0;
+    in_param_scope = false;
     global_ids = {};
-    class_ids = {};
-    last_class_id = '';
-    fn_ids = {};
+    class_ids = [];
+    last_class_id = [];
+    fn_ids = [];
     for (y = _i = 0, _len = statements.length; _i < _len; y = ++_i) {
       statement = statements[y];
       indent = function() {
         return repeat('  ', statement.level);
       };
-      toToken = function(s) {
-        return SYMBOL[s.toUpperCase()];
-      };
-      oneOrMore = function(start, pattern) {
-        var at_least_one, ii;
-        ii = start - 2;
-        at_least_one = false;
-        while (statement[++ii].hasType(toToken(pattern))) {
-          at_least_one = true;
-        }
-        if (at_least_one) {
-          return ii;
-        } else {
-          return false;
+      cursor = 0;
+      pluckFromStatement = function(tokens) {
+        var ii, _j, _ref;
+        for (ii = _j = _ref = tokens.length - 1; _ref <= 0 ? _j <= 0 : _j >= 0; ii = _ref <= 0 ? ++_j : --_j) {
+          statement.splice(tokens[ii].statement_pos, 1);
         }
       };
-      isA = function(start, pattern) {
-        return statement[start - 1].hasType(toToken(pattern));
+      joinTokens = function(tokens, sep) {
+        var r, token, _j, _len1;
+        r = [];
+        for (_j = 0, _len1 = tokens.length; _j < _len1; _j++) {
+          token = tokens[_j];
+          r.push(token.chars);
+        }
+        return r.join(sep);
+      };
+      match = function(type, test_fn) {
+        var index, matches, result, s;
+        index = cursor - 1;
+        result = {
+          pos: cursor,
+          end: cursor,
+          matches: []
+        };
+        while (s = statement[++index]) {
+          if (s.isA('comment')) {
+            continue;
+          }
+          if (matches = test_fn.call(s)) {
+            result.tail = s.statement_pos = index;
+            result.matches.push(s);
+            cursor = index + 1;
+          }
+          switch (type) {
+            case 'zeroOrOne':
+              return result;
+            case 'zeroOrMore':
+              if (!matches) {
+                return result;
+              }
+              break;
+            case 'exactlyOne':
+              return (result.matches.length ? result : null);
+            case 'oneOrMore':
+              if (!matches) {
+                return (result.matches.length ? result : null);
+              }
+          }
+        }
       };
       toString = function(start, end) {
-        var beginning, ii, last_had_space, s, _j, _ref, _ref1;
-        end || (end = statement.length + 1);
-        s = [];
+        var beginning, comment, ii, last_had_space, o, s, _j;
+        if (start == null) {
+          start = 0;
+        }
+        if (end === void 0) {
+          end = statement.length - 1;
+        }
+        if (end < 0) {
+          return '';
+        }
+        o = [];
         beginning = true;
         last_had_space = false;
-        for (ii = _j = _ref = start - 1, _ref1 = end - 1; _ref <= _ref1 ? _j < _ref1 : _j > _ref1; ii = _ref <= _ref1 ? ++_j : --_j) {
-          if (statement[ii].hasType(SYMBOL.KEYWORD, SYMBOL.ACCESS, SYMBOL.TYPE) || statement[ii].hasType(SYMBOL.OP) && statement[ii].chars !== CHAR.EXCLAIMATION) {
+        for (ii = _j = start; start <= end ? _j <= end : _j >= end; ii = start <= end ? ++_j : --_j) {
+          s = statement[ii];
+          if (s.hasType(SYMBOL.COMMENT, SYMBOL.SUPPORT)) {
+            if (s.hasType(SYMBOL.MULTILINE_COMMENT)) {
+              comment = s.chars.replace(/^[\t ]*\*\//m, '').replace(/^[\t ]*\*[\t ]*/mg, '').replace(/\/\*\*?/, '').replace(/^/mg, indent());
+              o.push("###" + comment + "### ");
+              continue;
+            } else if (s.hasType(SYMBOL.ENDLINE_COMMENT, SYMBOL.SUPPORT)) {
+              comment = s.chars.replace(/^\s*\/\/\s*/mg, '');
+              o.push("# " + comment + "\n" + (indent()));
+              continue;
+            }
+          }
+          if (s.hasType(SYMBOL.KEYWORD, SYMBOL.ACCESS, SYMBOL.TYPE) || s.hasType(SYMBOL.OP) && s.chars !== CHAR.EXCLAIMATION) {
             if (beginning || last_had_space) {
-              s.push(statement[ii].chars + ' ');
+              o.push(s.chars + ' ');
             } else {
-              s.push(' ' + statement[ii].chars + ' ');
+              o.push(' ' + s.chars + ' ');
             }
             last_had_space = true;
-          } else if (statement[ii].hasType(SYMBOL.TERMINATOR, SYMBOL.CAST, SYMBOL.BRACE)) {
+          } else if (s.hasType(SYMBOL.TERMINATOR, SYMBOL.CAST, SYMBOL.BRACE)) {
 
-          } else if (statement[ii].hasType(SYMBOL.DOUBLE_SPACE)) {
-            s.push('');
+          } else if (s.hasType(SYMBOL.DOUBLE_SPACE)) {
+            o.push('');
           } else {
             last_had_space = false;
-            s.push(statement[ii].chars);
+            o.push(s.chars);
           }
           beginning = false;
         }
-        return s.join('');
+        return o.join('');
       };
       hasAccessor = function(start, end, accessor) {
-        var ii, _j, _ref, _ref1;
-        for (ii = _j = _ref = start - 1, _ref1 = end - 1; _ref <= _ref1 ? _j <= _ref1 : _j >= _ref1; ii = _ref <= _ref1 ? ++_j : --_j) {
+        var ii, _j;
+        for (ii = _j = start; start <= end ? _j <= end : _j >= end; ii = start <= end ? ++_j : --_j) {
           if (statement[ii].hasType(SYMBOL.ACCESS) && statement[ii].chars === accessor) {
             return true;
           }
@@ -956,108 +1017,133 @@ Ast = (function() {
         return false;
       };
       isLocal = function(v) {
-        return fn_ids[v] === 1;
+        return fn_ids[v] <= in_fn_scope;
       };
       isGlobal = function(v) {
         return global_ids[v] === 1;
       };
       symbol = statement[0];
-      if (symbol.hasType(SYMBOL.KEYWORD) && symbol.chars === 'package') {
+      cursor = 0;
+      if (match('exactlyOne', function() {
+        return this.chars === 'package';
+      })) {
         out.mod += "module.exports = # " + (toString(1));
         continue;
       }
-      if (symbol.hasType(SYMBOL.KEYWORD) && symbol.chars === 'import') {
-        file = toString(2);
-        _ref = file.split('.'), nil = 2 <= _ref.length ? __slice.call(_ref, 0, _j = _ref.length - 1) : (_j = 0, []), name = _ref[_j++];
-        out.req += "" + name + " = require '" + (file.replace(/\./g, '/')) + "'\n";
+      cursor = 0;
+      if (match('exactlyOne', function() {
+        return this.chars === 'import';
+      })) {
+        file = toString(1).split('.');
+        out.req += "" + file[file.length] + " = require '" + (file.replace('.', '/')) + "'\n";
         global_ids[name] = 1;
         continue;
       }
-      if (symbol.hasType(SYMBOL.COMMENT, SYMBOL.SUPPORT)) {
-        if (symbol.hasType(SYMBOL.MULTILINE_COMMENT)) {
-          comment = symbol.chars.replace(/^[\t ]*\*\/[\r\n]*/m, '').replace(/^[\t ]*\*[\t ]*/mg, '').replace(/\/\*\*?[\r\n]*/, '').replace(/(^[\r\n]+|[\r\n]+$)/g, '').replace(/^/mg, indent());
-          out.classes += "" + (indent()) + "###\n" + comment + "\n" + (indent()) + "###\n";
-          continue;
-        } else if (symbol.hasType(SYMBOL.ENDLINE_COMMENT, SYMBOL.SUPPORT)) {
-          comment = symbol.chars.replace(/^\s*\/\/\s*/mg, '');
-          out.classes += "" + (indent()) + "# " + comment + "\n";
-          continue;
-        }
-      } else {
-        for (_k = 0, _len1 = statement.length; _k < _len1; _k++) {
-          s = statement[_k];
-          if (!(s.hasType(SYMBOL.ENDLINE_COMMENT, SYMBOL.SUPPORT))) {
-            continue;
-          }
-          s.chars = s.chars.replace(/^\s*\/\/\s*/mg, ' # ');
-          break;
-        }
-      }
-      if (symbol.hasType(SYMBOL.LEVEL_DEC)) {
+      cursor = 0;
+      if (match('exactlyOne', function() {
+        return this.isA('level_dec');
+      })) {
         if (in_fn_scope) {
-          in_fn_scope = false;
+          in_fn_scope--;
+          for (id in fn_ids) {
+            lvl = fn_ids[id];
+            if (lvl > in_fn_scope) {
+              delete fn_ids[id];
+            }
+          }
           fn_ids = {};
         } else if (in_class_scope) {
-          in_class_scope = false;
-          last_class_id = '';
-          class_ids = {};
+          in_class_scope--;
+          for (id in class_ids) {
+            lvl = class_ids[id];
+            if (lvl > in_class_scope) {
+              delete class_ids[id];
+            }
+          }
+          last_class_id.pop();
         }
         continue;
       }
-      for (ii = _l = 0, _len2 = statement.length; _l < _len2; ii = ++_l) {
+      for (ii = _j = 0, _len1 = statement.length; _j < _len1; ii = ++_j) {
         s = statement[ii];
-        if (s.hasType(SYMBOL.ID)) {
-          if (statement[ii - 1] && statement[ii - 1].hasType(SYMBOL.TYPE)) {
+        prev = statement[ii - 1];
+        if (s.isA('param')) {
+          in_param_scope = s.isA('open');
+        }
+        if (s.isA('id')) {
+          if (prev && prev.isA('type')) {
             if (in_fn_scope) {
-              fn_ids[s.chars] = 1;
+              fn_ids[s.chars] = in_fn_scope;
             } else if (in_class_scope) {
-              class_ids[s.chars] = 1;
+              class_ids[s.chars] = in_class_scope;
             }
           }
-          if (in_class_scope && (statement[ii - 1] === void 0 || statement[ii - 1].chars !== CHAR.PERIOD)) {
+          if (in_class_scope && !in_param_scope && ((prev === void 0) || prev.chars !== CHAR.PERIOD)) {
             if (!(isLocal(s.chars) || isGlobal(s.chars))) {
-              statement[ii].chars = '@' + statement[ii].chars;
+              s.chars = '@' + s.chars;
             }
           }
         }
       }
-      if ((x = oneOrMore(1, 'access')) && (statement[x].chars === 'class') && (isA(x + 2, 'id'))) {
-        out.classes += "" + (indent()) + (toString(x + 1)) + " # " + (toString(1, x + 1)) + "\n";
+      cursor = 0;
+      if ((a = match('oneOrMore', function() {
+        return this.isA('access');
+      })) && (match('exactlyOne', function() {
+        return this.chars === 'class';
+      })) && (i = match('exactlyOne', function() {
+        return this.isA('id');
+      }))) {
+        last_class_id.push(i.matches[0].chars);
+        pluckFromStatement(removed = a.matches);
+        for (ii = _k = 0, _len2 = statement.length; _k < _len2; ii = ++_k) {
+          token = statement[ii];
+          if (token.chars === 'implements') {
+            removed = removed.concat(statement.splice(ii, 2));
+            break;
+          }
+        }
+        out.classes += "" + (indent()) + (toString()) + " # " + (joinTokens(removed, ' ')) + "\n";
         in_class_scope = true;
-        last_class_id = toString(x + 2, x + 3);
         continue;
       }
-      iii = 1;
-      if (((x = oneOrMore(1, 'access')) || (x = 0) || 1) && ((isA(x + iii, 'type')) || (iii = 0) || 1) && (isA(x + iii + 1, 'id')) && (isA(x + iii + 2, 'param')) && (isA(x + iii + 2, 'open'))) {
-        param_types = [];
-        fn_access_mods = [];
-        fn_type = 'void';
+      cursor = 0;
+      if ((a = match('oneOrMore', function() {
+        return this.isA('access');
+      })) && (t = match('zeroOrOne', function() {
+        return this.isA('type');
+      })) && (i = match('exactlyOne', function() {
+        return this.isA('id');
+      })) && (p = match('exactlyOne', function() {
+        return this.isA('param') && this.isA('open');
+      }))) {
         fn_id = '';
-        fn_comment = '';
+        fn_type = 'void';
         fn_params = [];
-        params_open = false;
+        fn_comment = '';
         in_fn_scope = true;
-        for (ii = _m = 0, _ref1 = statement.length; 0 <= _ref1 ? _m < _ref1 : _m > _ref1; ii = 0 <= _ref1 ? ++_m : --_m) {
+        fn_params_open = false;
+        fn_param_types = [];
+        fn_access_mods = [];
+        for (ii = _l = 0, _ref = statement.length; 0 <= _ref ? _l < _ref : _l > _ref; ii = 0 <= _ref ? ++_l : --_l) {
           s = statement[ii];
           if (s.hasType(SYMBOL.ACCESS)) {
-            if (!params_open) {
+            if (!fn_params_open) {
               fn_access_mods.push(s.chars);
             }
           } else if (s.hasType(SYMBOL.TYPE)) {
-            if (!params_open) {
+            if (!fn_params_open) {
               fn_type = s.chars;
             } else {
-              param_types.push(s.chars);
+              fn_param_types.push(s.chars);
             }
           } else if (s.hasType(SYMBOL.PARAM) && s.hasType(SYMBOL.OPEN)) {
-            params_open = true;
-          } else if (s.hasType(SYMBOL.ENDLINE_COMMENT)) {
-            fn_comment = s.chars;
+            fn_params_open = true;
           } else if (s.hasType(SYMBOL.ID)) {
-            if (!params_open) {
+            if (!fn_params_open) {
               fn_id = s.chars;
             } else {
               fn_params.push(s.chars);
+              fn_ids[s.chars] = in_fn_scope;
             }
           }
         }
@@ -1065,29 +1151,43 @@ Ast = (function() {
           fn_params;
         }
         fn_params = fn_params.length ? "(" + (fn_params.join(', ')) + ") " : '';
-        param_types = !param_types.length ? ['void'] : param_types;
-        if (fn_id === last_class_id) {
+        fn_param_types = !fn_param_types.length ? ['void'] : fn_param_types;
+        if (fn_id.replace(/^@/, '') === last_class_id[last_class_id.length - 1]) {
           fn_id = 'constructor';
         }
-        if (fn_id[0] === '@' && hasAccessor(1, x, 'static')) {
+        if (fn_id[0] === '@' && hasAccessor(a.pos, a.end, 'static')) {
           fn_id = fn_id.substr(1, fn_id.length - 1);
         }
-        out.classes += "" + (indent()) + fn_id + ": " + fn_params + "-> # " + (fn_access_mods.reverse().join(' ')) + " (" + (param_types.join(', ')) + "): " + fn_type + " " + fn_comment + "\n";
-        continue;
-      }
-      if ((x = oneOrMore(1, 'access')) && (isA(x + 1, 'type')) && (isA(x + 2, 'id'))) {
-        id = toString(x + 2, x + 3);
-        if (in_class_scope && !in_fn_scope) {
-          if (id[0] === '@' && hasAccessor(1, x, 'static')) {
-            statement[x + 1].chars = statement[x + 1].chars.substr(1, statement[x + 1].chars.length - 1);
+        for (ii = _m = _ref1 = statement.length - 1; _ref1 <= 0 ? _m <= 0 : _m >= 0; ii = _ref1 <= 0 ? ++_m : --_m) {
+          s = statement[ii];
+          if (statement[ii].types[0] !== SYMBOL.COMMENT) {
+            statement.splice(ii, 1);
           }
         }
-        out.classes += "" + (indent()) + (toString(x + 2)) + " # " + (toString(1, x + 2)) + "\n";
-      } else {
-        out.classes += "" + (indent()) + (toString(1)) + "\n";
+        out.classes += "" + (indent()) + (toString()) + fn_id + ": " + fn_params + "-> # " + (fn_access_mods.reverse().join(' ')) + " (" + (fn_param_types.join(', ')) + "): " + fn_type + " " + fn_comment + "\n";
+        continue;
       }
+      cursor = 0;
+      if ((a = match('oneOrMore', function() {
+        return this.isA('access');
+      })) && (t = match('zeroOrOne', function() {
+        return this.isA('type');
+      })) && (i = match('exactlyOne', function() {
+        return this.isA('id');
+      }))) {
+        id = i.matches[0].chars;
+        if (in_class_scope && !in_fn_scope) {
+          if (id[0] === '@' && hasAccessor(a.pos, a.end, 'static')) {
+            i.matches[0].chars = id.substr(1, id.length - 1);
+          }
+        }
+        pluckFromStatement(removed = a.matches.concat(t.matches));
+        out.classes += "" + (indent()) + (toString()) + " # " + (joinTokens(removed, ' ')) + "\n";
+        continue;
+      }
+      out.classes += "" + (indent()) + (toString()) + "\n";
     }
-    out = "" + out.req + "\n" + out.mod + "\n" + out.classes + "\n";
+    out = "" + out.req + out.mod + out.classes;
     return out;
   };
 
@@ -1119,3 +1219,7 @@ Ast = (function() {
   return Ast;
 
 })();
+
+if ('function' === typeof require && typeof exports === typeof module) {
+  module.exports = Ast;
+}
