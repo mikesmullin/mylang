@@ -789,7 +789,9 @@ class Ast # Parser
           (match 'exactlyOne', -> @chars is 'class') and
           (i = match 'exactlyOne', -> @isA 'id')
         # remove access modifiers from the statement
-        last_class_id.push i.matches[0].chars
+        name = i.matches[0].chars
+        last_class_id.push name
+        global_ids[name] = 1
         pluckFromStatement removed = a.matches
         for token, ii in statement
           if token.chars is 'implements'
