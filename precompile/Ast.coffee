@@ -48,6 +48,8 @@ class Symbol
         if _type.enum is __type.enum
           return true
     return false
+  isA: (str_type) ->
+    @hasType SYMBOL[str_type.toUpperCase()]
   removeType: (type) ->
     for _type, i in @types when _type.enum is type.enum
       @types.splice i, 1
@@ -601,8 +603,9 @@ class Ast # Parser
     while ++i < len
       symbol = symbol_array[i]
       statement.push symbol_array[i]
-      if symbol.hasType(SYMBOL.TERMINATOR, SYMBOL.MULTILINE_COMMENT, SYMBOL.SUPPORT, SYMBOL.DOUBLE_SPACE, SYMBOL.LEVEL_DEC) or
-          last_symbol and last_symbol.hasType(SYMBOL.TERMINATOR) and symbol.hasType(SYMBOL.ENDLINE_COMMENT)
+      #if symbol.hasType(SYMBOL.TERMINATOR, SYMBOL.MULTILINE_COMMENT, SYMBOL.SUPPORT, SYMBOL.DOUBLE_SPACE, SYMBOL.LEVEL_DEC) or
+      #    (last_symbol and last_symbol.hasType(SYMBOL.TERMINATOR) and symbol.hasType(SYMBOL.ENDLINE_COMMENT))
+      if symbol.hasType(SYMBOL.TERMINATOR)
         last_level = statement.level = symbol.level
         statements.push statement
         statement = []
@@ -631,21 +634,45 @@ class Ast # Parser
       # transform some
       # but output all
       indent = -> repeat '  ', statement.level
-      toToken = (s) -> SYMBOL[s.toUpperCase()]
-      oneOrMore = (start, pattern) ->
-        ii = start-2
-        at_least_one = false
-        while statement[++ii].hasType toToken pattern
-          at_least_one = true
-        return if at_least_one then ii else false
-      isA = (start, pattern) ->
-        statement[start-1].hasType toToken pattern
+      oneOrMore = (start, test_fn) -> # not zero-indexed so that returning position zero is still truthy
+        last_one = false
+        while s = statement[start++-1]
+          continue if s.isA 'comment'
+          last_one = start if test_fn.call s
+        return last_one
       toString = (start, end) ->
         end ||= statement.length+1
         s = []
         beginning = true
         last_had_space = false
         for ii in [start-1...end-1]
+          # render comments n stuff here
+          ## comments
+          #if symbol.hasType SYMBOL.COMMENT, SYMBOL.SUPPORT
+          #  # multi-line
+          #  # TODO: dont assume multi-line means multi-line
+          #  #       preserve the \r\n even on ends and reuse them here
+          #  #       its possible to do /* */ on same line even inbetween a statement
+          #  if symbol.hasType SYMBOL.MULTILINE_COMMENT
+          #    comment = symbol.chars
+          #      .replace(/^[\t ]*\*\/[\r\n]*/m, '') # bottom
+          #      .replace(/^[\t ]*\*[\t ]*/mg, '') # middle
+          #      .replace(/\/\*\*?[\r\n]*/, '') # top
+          #      .replace(/(^[\r\n]+|[\r\n]+$)/g, '') # trim
+          #      .replace(/^/mg, indent()) # indent
+          #    out.classes += "#{indent()}###\n#{comment}\n#{indent()}###\n"
+          #    continue
+          #  # single-line
+          #  else if symbol.hasType SYMBOL.ENDLINE_COMMENT, SYMBOL.SUPPORT
+          #    comment = symbol.chars.replace(/^\s*\/\/\s*/mg, '')
+          #    out.classes += "#{indent()}# #{comment}\n"
+          #    continue
+          #else
+          #  # end-line
+          #  for s in statement when s.hasType SYMBOL.ENDLINE_COMMENT, SYMBOL.SUPPORT
+          #    s.chars = s.chars.replace(/^\s*\/\/\s*/mg, ' # ')
+          #    break
+
           if statement[ii].hasType(SYMBOL.KEYWORD, SYMBOL.ACCESS, SYMBOL.TYPE) or
               statement[ii].hasType(SYMBOL.OP) and statement[ii].chars isnt CHAR.EXCLAIMATION
             if beginning or last_had_space
@@ -672,6 +699,7 @@ class Ast # Parser
       symbol = statement[0]
 
       # package = module.exports
+      if oneOrMore 1, -> @isA 'keyword'
       if symbol.hasType(SYMBOL.KEYWORD) and
           symbol.chars is 'package'
         out.mod += "module.exports = # #{toString 1}"
@@ -685,29 +713,6 @@ class Ast # Parser
         out.req += "#{name} = require '#{file.replace /\./g, '/'}'\n"
         global_ids[name] = 1
         continue
-
-      # comments
-      if symbol.hasType SYMBOL.COMMENT, SYMBOL.SUPPORT
-        # multi-line
-        if symbol.hasType SYMBOL.MULTILINE_COMMENT
-          comment = symbol.chars
-            .replace(/^[\t ]*\*\/[\r\n]*/m, '') # bottom
-            .replace(/^[\t ]*\*[\t ]*/mg, '') # middle
-            .replace(/\/\*\*?[\r\n]*/, '') # top
-            .replace(/(^[\r\n]+|[\r\n]+$)/g, '') # trim
-            .replace(/^/mg, indent()) # indent
-          out.classes += "#{indent()}###\n#{comment}\n#{indent()}###\n"
-          continue
-        # single-line
-        else if symbol.hasType SYMBOL.ENDLINE_COMMENT, SYMBOL.SUPPORT
-          comment = symbol.chars.replace(/^\s*\/\/\s*/mg, '')
-          out.classes += "#{indent()}# #{comment}\n"
-          continue
-      else
-        # end-line
-        for s in statement when s.hasType SYMBOL.ENDLINE_COMMENT, SYMBOL.SUPPORT
-          s.chars = s.chars.replace(/^\s*\/\/\s*/mg, ' # ')
-          break
 
       # scope
       if symbol.hasType(SYMBOL.LEVEL_DEC)
@@ -816,7 +821,7 @@ class Ast # Parser
       # any id not prefixed by a \.:
       #  @ unless part of requires or defined in local scope
 
-    #@pretty_print_symbol_array symbol_array
+    @pretty_print_symbol_array symbol_array
     out = "#{out.req}\n#{out.mod}\n#{out.classes}\n"
     return out
 

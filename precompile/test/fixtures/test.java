@@ -1,5 +1,6 @@
-public class AccountExtension extends AbstractExtension
-{
-  private static final String CLASS_NAME = AccountExtension.class.getName();
-  private static final int ACCOUNT_CREATION_THREAD_POOL_SIZE = 2;
+public class Bicycle {
+  // the Bicycle class has
+  // three fields
+  public int cadence;
+  public int gear;
 }
