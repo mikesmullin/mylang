@@ -729,7 +729,8 @@ class Ast # Parser
       cursor = 0 # reset
       if (match 'exactlyOne', -> @chars is 'import')
         file = toString(1).split '.'
-        out.req += "#{file[file.length-1]} = require '#{file.join '/'}'\n"
+        name = file[file.length-1]
+        out.req += "#{name} = require '#{file.join '/'}'\n"
         global_ids[name] = 1
         continue
 
