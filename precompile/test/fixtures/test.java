@@ -1,7 +1,7 @@
 public class Bicycle extends D implements C {
   // the Bicycle class has
   // three fields
-  public int cadence;
+  public static int cadence;
   public int gear;
   public int speed;
 
@@ -15,7 +15,7 @@ public class Bicycle extends D implements C {
 
   // the Bicycle class has
   // four methods
-  public void setCadence(int newValue) {
+  public static void setCadence(int newValue) {
     cadence = newValue;
   }
 
