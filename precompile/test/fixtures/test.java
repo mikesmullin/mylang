@@ -1,4 +1,4 @@
-public class Bicycle {
+public class Bicycle extends D implements C {
   // the Bicycle class has
   // three fields
   public int cadence;

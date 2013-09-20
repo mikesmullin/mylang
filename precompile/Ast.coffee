@@ -789,7 +789,11 @@ class Ast # Parser
         # remove access modifiers from the statement
         last_class_id.push i.matches[0].chars
         pluckFromStatement removed = a.matches
-        out.classes += "#{indent()}#{toString()} # #{joinTokens removed}\n"
+        for token, ii in statement
+          if token.chars is 'implements'
+            removed = removed.concat statement.splice ii, 2 # pluck
+            break
+        out.classes += "#{indent()}#{toString()} # #{joinTokens removed, ' '}\n"
         in_class_scope = true
         continue
 
