@@ -1047,7 +1047,7 @@ Ast = (function() {
         return this.isA('level_dec');
       })) {
         if (in_fn_scope) {
-          if (in_fn_scope === 1 && last_fn_type_void) {
+          if (last_fn_type_void) {
             out.classes += "" + (indent()) + "return\n";
           }
           in_fn_scope--;
@@ -1128,7 +1128,7 @@ Ast = (function() {
         fn_type = 'void';
         fn_params = [];
         fn_comment = '';
-        in_fn_scope++;
+        in_fn_scope = true;
         fn_params_open = false;
         fn_param_types = [];
         fn_access_mods = [];

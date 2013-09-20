@@ -104,7 +104,7 @@ SYMBOL = new Enum ['LINEBREAK','INDENT','WORD','TEXT','KEYWORD',
   'COMMENT','ENDLINE_COMMENT','MULTILINE_COMMENT',
   'CALL','INDEX','PARAM','TERMINATOR','LEVEL_INC','LEVEL_DEC',
   'ACCESS', 'TYPE', 'CAST','GENERIC_TYPE','SUPPORT',
-  'DOUBLE_SPACE','BLOCK','FN_CLOSE', 'CLASS_CLOSE']
+  'DOUBLE_SPACE','BLOCK']
 
 OPERATOR = new Enum ['UNARY_LEFT','UNARY_RIGHT','BINARY_LEFT_RIGHT',
   'BINARY_LEFT_LEFT','BINARY_RIGHT_RIGHT','TERNARY_RIGHT_RIGHT_RIGHT']
@@ -519,10 +519,8 @@ class Ast # Parser
           (e = next_matching_pair(i, (-> @chars is CHAR.OPEN_PARENTHESIS), -> @chars is CHAR.CLOSE_PARENTHESIS))
 
         # param
-        if (symbol_array[e+1].chars is CHAR.OPEN_BRACE) and
-            (c = next_matching_pair(e+1, (-> @chars is CHAR.OPEN_BRACE), -> @chars is CHAR.CLOSE_BRACE))
+        if (symbol_array[e+1].chars is CHAR.OPEN_BRACE)
           n.pushUniqueType SYMBOL.PARAM
-          symbol_array[c].pushUniqueType SYMBOL.FN_CLOSE
           symbol_array[e].pushUniqueType SYMBOL.PARAM
         else if (symbol_array[e+1].chars is 'throws') and
             (symbol_array[e+2].hasType SYMBOL.ID) and
@@ -740,9 +738,8 @@ class Ast # Parser
       # ^level_dec
       cursor = 0 # reset
       if (match 'exactlyOne', -> @isA 'level_dec')
-        console.log in_fn_scope: in_fn_scope, last_fn_type_void: last_fn_type_void, symbol: JSON.stringify symbol
         if in_fn_scope
-          if in_fn_scope is 1 and last_fn_type_void # explicit return
+          if last_fn_type_void # explicit return
             out.classes += "#{indent()}return\n"
           in_fn_scope--
           for id, lvl of fn_ids
@@ -819,7 +816,7 @@ class Ast # Parser
         fn_type = 'void'
         fn_params = []
         fn_comment = ''
-        in_fn_scope++
+        in_fn_scope = true
         fn_params_open = false
         fn_param_types = []
         fn_access_mods = []
