@@ -862,7 +862,7 @@ class Ast # Parser
       # pass-through everything else
       out.classes += "#{indent()}#{toString()}\n"
 
-    @pretty_print_symbol_array symbol_array
+    #@pretty_print_symbol_array symbol_array
     out = "#{out.req}#{out.mod}#{out.classes}"
     return out
 
