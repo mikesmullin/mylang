@@ -593,27 +593,26 @@ class Ast # Parser
     return symbol_array
 
   translate_to_coffee: (symbol_array) ->
-    # split into statements
+    # group tokens into array of statements
     i = -1
-    len = symbol_array.length
-    statements = []
     statement = []
     last_level = 0
-    last_symbol = null
+    statements = []
+    len = symbol_array.length
     while ++i < len
       symbol = symbol_array[i]
-      statement.push symbol_array[i]
-      #if symbol.hasType(SYMBOL.TERMINATOR, SYMBOL.MULTILINE_COMMENT, SYMBOL.SUPPORT, SYMBOL.DOUBLE_SPACE, SYMBOL.LEVEL_DEC) or
-      #    (last_symbol and last_symbol.hasType(SYMBOL.TERMINATOR) and symbol.hasType(SYMBOL.ENDLINE_COMMENT))
-      if symbol.hasType(SYMBOL.TERMINATOR)
-        last_level = statement.level = symbol.level
+      slice_statement_buf = (level) ->
+        last_level = statement.level = level
         statements.push statement
         statement = []
-      last_symbol = symbol
+      # symbols that both divide and get their own lines afterward
+      if symbol.hasType SYMBOL.LEVEL_DEC, SYMBOL.TERMINATOR, SYMBOL.DOUBLE_SPACE
+        statement.push symbol
+        slice_statement_buf symbol.level
+      # remaining symbols group to form a statement
+      else statement.push symbol
     if statement.length
-      statement.level = last_level + 1 # TODO: this may not always work
-      statements.push statement
-      statement = []
+      slice_statement_buf last_level+1 # TODO: this last level may not always work
 
     out =
       req: ''
@@ -623,73 +622,91 @@ class Ast # Parser
 
     i = -1
     len = symbol_array.length
-    in_class_scope = false
-    in_fn_scope = false
+    in_class_scope = 0
+    in_fn_scope = 0
+    in_param_scope = false
     global_ids = {}
-    class_ids = {}
-    last_class_id = ''
-    fn_ids = {}
+    class_ids = []
+    last_class_id = []
+    fn_ids = []
 
     for statement, y in statements
       # transform some
       # but output all
       indent = -> repeat '  ', statement.level
-      oneOrMore = (start, test_fn) -> # not zero-indexed so that returning position zero is still truthy
-        last_one = false
-        while s = statement[start++-1]
-          continue if s.isA 'comment'
-          last_one = start if test_fn.call s
-        return last_one
-      toString = (start, end) ->
-        end ||= statement.length+1
-        s = []
+      cursor = 0
+      pluckFromStatement = (tokens) ->
+        for ii in [tokens.length-1..0] # starting at farthest end
+          statement.splice tokens[ii].statement_pos, 1 # remove token from statement array
+        return
+      joinTokens = (tokens, sep) ->
+        r = []
+        for token in tokens
+          r.push token.chars
+        return r.join sep
+      match = (type, test_fn) ->
+        index = cursor - 1
+        result =
+          pos: cursor # beginning index of matches
+          end: cursor # ending index of matches
+          matches: [] # matching tokens
+        while s = statement[++index]
+          continue if s.isA 'comment' # ignore comments
+          if matches = test_fn.call s
+            result.tail = s.statement_pos = index
+            result.matches.push s
+            cursor = index + 1 # increments cursor to position of element after last match
+          switch type
+            when 'zeroOrOne' then return result # always true but cursor is also incremented if one was found
+            when 'zeroOrMore' then return result unless matches # always true but cursor is also incremented once for each find
+            when 'exactlyOne' then return (if result.matches.length then result else null) # true of one was found
+            when 'oneOrMore' then return (if result.matches.length then result else null) unless matches # true if any were found
+            #when 'between' then # WIP
+      toString = (start=0, end) ->
+        end = statement.length-1 if end is undefined
+        return '' if end < 0
+        o = []
         beginning = true
         last_had_space = false
-        for ii in [start-1...end-1]
-          # render comments n stuff here
-          ## comments
-          #if symbol.hasType SYMBOL.COMMENT, SYMBOL.SUPPORT
-          #  # multi-line
-          #  # TODO: dont assume multi-line means multi-line
-          #  #       preserve the \r\n even on ends and reuse them here
-          #  #       its possible to do /* */ on same line even inbetween a statement
-          #  if symbol.hasType SYMBOL.MULTILINE_COMMENT
-          #    comment = symbol.chars
-          #      .replace(/^[\t ]*\*\/[\r\n]*/m, '') # bottom
-          #      .replace(/^[\t ]*\*[\t ]*/mg, '') # middle
-          #      .replace(/\/\*\*?[\r\n]*/, '') # top
-          #      .replace(/(^[\r\n]+|[\r\n]+$)/g, '') # trim
-          #      .replace(/^/mg, indent()) # indent
-          #    out.classes += "#{indent()}###\n#{comment}\n#{indent()}###\n"
-          #    continue
-          #  # single-line
-          #  else if symbol.hasType SYMBOL.ENDLINE_COMMENT, SYMBOL.SUPPORT
-          #    comment = symbol.chars.replace(/^\s*\/\/\s*/mg, '')
-          #    out.classes += "#{indent()}# #{comment}\n"
-          #    continue
-          #else
-          #  # end-line
-          #  for s in statement when s.hasType SYMBOL.ENDLINE_COMMENT, SYMBOL.SUPPORT
-          #    s.chars = s.chars.replace(/^\s*\/\/\s*/mg, ' # ')
-          #    break
+        console.log len: statement.length, start: start, end: end
+        for ii in [start..end]
+          s = statement[ii]
 
-          if statement[ii].hasType(SYMBOL.KEYWORD, SYMBOL.ACCESS, SYMBOL.TYPE) or
-              statement[ii].hasType(SYMBOL.OP) and statement[ii].chars isnt CHAR.EXCLAIMATION
+          # comments
+          if s.hasType SYMBOL.COMMENT, SYMBOL.SUPPORT
+            # multi-line
+            if s.hasType SYMBOL.MULTILINE_COMMENT
+              comment = s.chars
+                .replace(/^[\t ]*\*\//m, '') # bottom
+                .replace(/^[\t ]*\*[\t ]*/mg, '') # middle
+                .replace(/\/\*\*?/, '') # top
+                .replace(/^/mg, indent()) # indent
+              o.push "####{comment}### "
+              continue
+            # single-line
+            else if s.hasType SYMBOL.ENDLINE_COMMENT, SYMBOL.SUPPORT
+              comment = s.chars.replace(/^\s*\/\/\s*/mg, '')
+              o.push "# #{comment}\n#{indent()}"
+              continue
+
+          # everything else
+          if s.hasType(SYMBOL.KEYWORD, SYMBOL.ACCESS, SYMBOL.TYPE) or
+              s.hasType(SYMBOL.OP) and s.chars isnt CHAR.EXCLAIMATION
             if beginning or last_had_space
-              s.push statement[ii].chars+' '
+              o.push s.chars+' '
             else
-              s.push ' '+statement[ii].chars+' '
+              o.push ' '+s.chars+' '
             last_had_space = true
-          else if statement[ii].hasType SYMBOL.TERMINATOR, SYMBOL.CAST, SYMBOL.BRACE
-          else if statement[ii].hasType SYMBOL.DOUBLE_SPACE
-            s.push ''
+          else if s.hasType SYMBOL.TERMINATOR, SYMBOL.CAST, SYMBOL.BRACE
+          else if s.hasType SYMBOL.DOUBLE_SPACE
+            o.push ''
           else
             last_had_space = false
-            s.push statement[ii].chars
+            o.push s.chars
           beginning = false
-        s.join ''
+        return o.join ''
       hasAccessor = (start, end, accessor) ->
-        for ii in [start-1..end-1]
+        for ii in [start..end]
           if statement[ii].hasType(SYMBOL.ACCESS) and
               statement[ii].chars is accessor
             return true
@@ -699,30 +716,37 @@ class Ast # Parser
       symbol = statement[0]
 
       # package = module.exports
-      if oneOrMore 1, -> @isA 'keyword'
-      if symbol.hasType(SYMBOL.KEYWORD) and
-          symbol.chars is 'package'
+      # ^package
+      cursor = 0 # reset
+      if (match 'exactlyOne', -> @chars is 'package')
         out.mod += "module.exports = # #{toString 1}"
         continue
 
       # import = require
-      if symbol.hasType(SYMBOL.KEYWORD) and
-          symbol.chars is 'import'
-        file = toString 2
-        [nil..., name] = file.split '.'
-        out.req += "#{name} = require '#{file.replace /\./g, '/'}'\n"
+      # ^import
+      cursor = 0 # reset
+      if (match 'exactlyOne', -> @chars is 'import')
+        file = toString(1).split '.'
+        out.req += "#{file[file.length]} = require '#{file.replace '.', '/'}'\n"
         global_ids[name] = 1
         continue
 
       # scope
-      if symbol.hasType(SYMBOL.LEVEL_DEC)
+      # ^level_dec
+      cursor = 0 # reset
+      if (match 'exactlyOne', -> @isA 'level_dec')
         if in_fn_scope
-          in_fn_scope = false
+          in_fn_scope--
+          for id, lvl of fn_ids
+            if lvl > in_fn_scope
+              delete fn_ids[id]
           fn_ids = {}
         else if in_class_scope
-          in_class_scope = false
-          last_class_id = ''
-          class_ids = {}
+          in_class_scope--
+          for id, lvl of class_ids
+            if lvl > in_class_scope
+              delete class_ids[id]
+          last_class_id.pop()
         continue
 
       # ids
@@ -737,92 +761,105 @@ class Ast # Parser
       #out.classes += "#{id}, " for own id, nil of fn_ids
       #out.classes +='\n\n'
       for s, ii in statement
-        if s.hasType SYMBOL.ID
-          # keep definitions in scope registry
-          if statement[ii-1] and
-              statement[ii-1].hasType SYMBOL.TYPE
+        prev = statement[ii-1]
+        if s.isA 'param'
+          in_param_scope = s.isA 'open'
+        if s.isA 'id'
+          # map id definitions in scope registry
+          if prev and prev.isA 'type'
             if in_fn_scope
-              fn_ids[s.chars] = 1
+              fn_ids[s.chars] = in_fn_scope
             else if in_class_scope
-              class_ids[s.chars] = 1
+              class_ids[s.chars] = in_class_scope
           # top-level id references
           # may need a @ prefix if not in local scope
           if in_class_scope and
-              (statement[ii-1] is undefined or
-              statement[ii-1].chars isnt CHAR.PERIOD)
-            unless isLocal(s.chars) or isGlobal(s.chars)
-              statement[ii].chars = '@'+statement[ii].chars
+              not in_param_scope and
+              ((prev is undefined) or
+              prev.chars isnt CHAR.PERIOD)
+            unless isLocal(s.chars) or
+                isGlobal(s.chars)
+              s.chars = '@'+s.chars
 
+      # class
       #'^access+ class id'
-      if (x = oneOrMore 1, 'access') and
-          (statement[x].chars is 'class') and
-          (isA x+2, 'id')
-        out.classes += "#{indent()}#{toString x+1} # #{toString 1, x+1}\n"
+      cursor = 0 # reset
+      if (a = match 'oneOrMore', -> @isA 'access') and
+          (c = match 'exactlyOne', -> @chars is 'class') and
+          (match 'exactlyOne', -> @isA 'id')
+        # remove access modifiers from the statement
+        pluckFromStatement removed = a.matches
+        out.classes += "#{indent()}#{toString()} # #{joinTokens removed}\n"
         in_class_scope = true
-        last_class_id = toString x+2, x+3
+        last_class_id.push c.matches[0].chars
         continue
 
       # function definition
-      iii = 1
-      if ((x = oneOrMore 1, 'access') or (x=0) or 1) and # optional access modifier
-          ((isA x+iii, 'type') or (iii=0) or 1) and # optional type
-          (isA x+iii+1, 'id') and
-          (isA x+iii+2, 'param') and
-          (isA x+iii+2, 'open')
-        param_types = []
-        fn_access_mods = []
-        fn_type = 'void'
+      # ^access+ type? id param_open
+      cursor = 0 # reset
+      if (a = match 'oneOrMore', -> @isA 'access') and # optional access modifiers
+          (t = match 'zeroOrOne', -> @isA 'type') and # optional type
+          (i = match 'exactlyOne', -> @isA 'id') and
+          (p = match 'exactlyOne', -> @isA('param') and @isA('open'))
         fn_id = ''
-        fn_comment = ''
+        fn_type = 'void'
         fn_params = []
-        params_open = false
+        fn_comment = ''
         in_fn_scope = true
+        fn_params_open = false
+        fn_param_types = []
+        fn_access_mods = []
         for ii in [0...statement.length]
           s = statement[ii]
           if s.hasType SYMBOL.ACCESS
-            unless params_open
+            unless fn_params_open
               fn_access_mods.push s.chars
           else if s.hasType SYMBOL.TYPE
-            unless params_open
+            unless fn_params_open
               fn_type = s.chars
             else
-              param_types.push s.chars
+              fn_param_types.push s.chars
           else if s.hasType(SYMBOL.PARAM) and s.hasType(SYMBOL.OPEN)
-            params_open = true
-          else if s.hasType SYMBOL.ENDLINE_COMMENT
-            fn_comment = s.chars
+            fn_params_open = true
           else if s.hasType SYMBOL.ID
-            unless params_open
+            unless fn_params_open
               fn_id = s.chars
             else
               fn_params.push s.chars
+        # remove everything from the statement except comments
         if fn_params.length then fn_params
         fn_params = if fn_params.length then "(#{fn_params.join ', '}) " else ''
-        param_types = unless param_types.length then ['void'] else param_types
-        fn_id = 'constructor' if fn_id is last_class_id
-        # if static accessor used, dont use @ prefix
-        if fn_id[0] is '@' and hasAccessor 1, x, 'static'
-          fn_id = fn_id.substr 1, fn_id.length-1
-        out.classes += "#{indent()}#{fn_id}: #{fn_params}-> # #{fn_access_mods.reverse().join ' '} (#{param_types.join ', '}): #{fn_type} #{fn_comment}\n"
+        fn_param_types = unless fn_param_types.length then ['void'] else fn_param_types
+        fn_id = 'constructor' if fn_id is last_class_id[last_class_id.length-1]
+        if fn_id[0] is '@' and hasAccessor a.pos, a.end, 'static' # if static access modifier used
+          fn_id = fn_id.substr 1, fn_id.length-1 # don't use '@' prefix
+        for ii in [statement.length-1..0]
+          s = statement[ii]
+          unless statement[ii].types[0] is SYMBOL.COMMENT
+            statement.splice ii, 1 # remove
+        console.log JSON.stringify statement
+        out.classes += "#{indent()}#{toString()}#{fn_id}: #{fn_params}-> # #{fn_access_mods.reverse().join ' '} (#{fn_param_types.join ', '}): #{fn_type} #{fn_comment}\n"
         continue
 
       #'^access+ type id'
-      if (x = oneOrMore 1, 'access') and
-          (isA x+1, 'type') and
-          (isA x+2, 'id')
-        id = toString x+2, x+3
+      cursor = 0 # reset
+      if (a = match 'oneOrMore', -> @isA 'access') and # optional access modifiers
+          (t = match 'zeroOrOne', -> @isA 'type') and # optional type
+          (i = match 'exactlyOne', -> @isA 'id')
+        id = i.matches[0].chars
         if in_class_scope and not in_fn_scope
-          if id[0] is '@' and hasAccessor 1, x, 'static' # if static
-            statement[x+1].chars = statement[x+1].chars.substr 1, statement[x+1].chars.length-1 # no @
-        out.classes += "#{indent()}#{toString x+2} # #{toString 1, x+2}\n"
-      else
-        out.classes += "#{indent()}#{toString 1}\n"
+          if id[0] is '@' and hasAccessor a.pos, a.end, 'static' # if static
+            i.matches[0].chars = id.substr 1, id.length-1 # remove @ prefix
+        # remove access modifiers and types from the statement
+        pluckFromStatement removed = a.matches.concat(t.matches)
+        out.classes += "#{indent()}#{toString()} # #{joinTokens removed, ' '}\n"
+        continue
 
-      # any id not prefixed by a \.:
-      #  @ unless part of requires or defined in local scope
+      # pass-through everything else
+      out.classes += "#{indent()}#{toString()}\n"
 
     @pretty_print_symbol_array symbol_array
-    out = "#{out.req}\n#{out.mod}\n#{out.classes}\n"
+    out = "#{out.req}#{out.mod}#{out.classes}"
     return out
 
   # TODO: technically these are called tokens

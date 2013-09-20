@@ -7,7 +7,7 @@ fs = require 'fs'
 path = require 'path'
 glob = require 'glob'
 async = require 'async2'
-[bin, script, indir, outdir] = process.argv
+[nil..., indir, outdir] = process.argv
 
 Ast = require './Ast'
 
