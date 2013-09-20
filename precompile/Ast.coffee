@@ -606,7 +606,7 @@ class Ast # Parser
         statements.push statement
         statement = []
       # symbols that both divide and get their own lines afterward
-      if symbol.hasType SYMBOL.LEVEL_DEC, SYMBOL.TERMINATOR, SYMBOL.DOUBLE_SPACE
+      if symbol.hasType SYMBOL.LEVEL_DEC, SYMBOL.TERMINATOR, SYMBOL.DOUBLE_SPACE, SYMBOL.SUPPORT
         statement.push symbol
         slice_statement_buf symbol.level
       # remaining symbols group to form a statement
@@ -685,7 +685,8 @@ class Ast # Parser
             # single-line
             else if s.hasType SYMBOL.ENDLINE_COMMENT, SYMBOL.SUPPORT
               comment = s.chars.replace(/^\s*\/\/\s*/mg, '')
-              o.push "# #{comment}\n#{indent()}"
+              space = if ii is statement.length-1 then '' else "\n#{indent()}"
+              o.push "# #{comment}#{space}"
               continue
 
           # everything else
