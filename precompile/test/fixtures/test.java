@@ -1,33 +1,15 @@
-public class Bicycle extends Ride implements Sweet {
-  // the Bicycle class has
-  // three fields
-  public static int cadence;
-  public int gear;
-  public int speed;
-
-  // the Bicycle class has
-  // one constructor
-  public Bicycle(int startCadence, int startSpeed, int startGear) {
-    gear = startGear;
-    cadence = startCadence;
-    speed = startSpeed;
+public class AccountExtension extends AbstractExtension
+{
+  public void init()
+  {
+    _healthPingRequestCount = 0;
   }
 
-  // the Bicycle class has
-  // four methods
-  public static void setCadence(int newValue) {
-    cadence = newValue;
-  }
-
-  public void setGear(int newValue) {
-    gear = newValue;
-  }
-
-  public void applyBrake(int decrement) {
-    speed -= decrement;
-  }
-
-  public void speedUp(int increment) {
-    speed += increment;
+  public void destroy()
+  {
+    if (!_isDestroyed)
+    {
+      ExtensionUtility.debugTrace("Extension destroyed", 3, CLASS_NAME);
+    }
   }
 }
