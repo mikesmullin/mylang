@@ -861,7 +861,7 @@ Ast = (function() {
   };
 
   Ast.prototype.translate_to_coffee = function(symbol_array) {
-    var a, class_ids, cursor, file, fn_access_mods, fn_comment, fn_id, fn_ids, fn_param_types, fn_params, fn_params_open, fn_type, global_ids, hasAccessor, i, id, ii, in_class_scope, in_fn_scope, in_param_scope, indent, isGlobal, isLocal, joinTokens, last_class_id, last_level, len, lvl, match, name, out, p, pluckFromStatement, prev, removed, repeat, s, slice_statement_buf, statement, statements, symbol, t, toString, token, y, _i, _j, _k, _l, _len, _len1, _len2, _m, _ref, _ref1;
+    var a, class_ids, cursor, file, fn_access_mods, fn_comment, fn_id, fn_ids, fn_param_types, fn_params, fn_params_open, fn_type, global_ids, hasAccessor, i, id, ii, in_class_scope, in_fn_scope, in_param_scope, indent, isGlobal, isLocal, joinTokens, last_class_id, last_fn_type_void, last_level, len, lvl, match, name, out, p, pluckFromStatement, prev, removed, repeat, s, slice_statement_buf, statement, statements, symbol, t, toString, token, y, _i, _j, _k, _l, _len, _len1, _len2, _m, _ref, _ref1;
     i = -1;
     statement = [];
     last_level = 0;
@@ -906,6 +906,7 @@ Ast = (function() {
     class_ids = [];
     last_class_id = [];
     fn_ids = [];
+    last_fn_type_void = true;
     for (y = _i = 0, _len = statements.length; _i < _len; y = ++_i) {
       statement = statements[y];
       indent = function() {
@@ -1045,6 +1046,9 @@ Ast = (function() {
         return this.isA('level_dec');
       })) {
         if (in_fn_scope) {
+          if (last_fn_type_void) {
+            out.classes += "" + (indent()) + "return\n";
+          }
           in_fn_scope--;
           for (id in fn_ids) {
             lvl = fn_ids[id];
@@ -1161,6 +1165,7 @@ Ast = (function() {
         if (fn_id[0] === '@' && !hasAccessor(a.pos, a.end, 'static')) {
           fn_id = fn_id.substr(1, fn_id.length - 1);
         }
+        last_fn_type_void = fn_type === 'void';
         for (ii = _m = _ref1 = statement.length - 1; _ref1 <= 0 ? _m <= 0 : _m >= 0; ii = _ref1 <= 0 ? ++_m : --_m) {
           s = statement[ii];
           if (statement[ii].types[0] !== SYMBOL.COMMENT) {

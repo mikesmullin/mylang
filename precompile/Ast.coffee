@@ -629,6 +629,7 @@ class Ast # Parser
     class_ids = []
     last_class_id = []
     fn_ids = []
+    last_fn_type_void = true
 
     for statement, y in statements
       # transform some
@@ -737,6 +738,8 @@ class Ast # Parser
       cursor = 0 # reset
       if (match 'exactlyOne', -> @isA 'level_dec')
         if in_fn_scope
+          if last_fn_type_void # explicit return
+            out.classes += "#{indent()}return\n"
           in_fn_scope--
           for id, lvl of fn_ids
             if lvl > in_fn_scope
@@ -842,6 +845,7 @@ class Ast # Parser
         fn_id = 'constructor' if fn_id.replace(/^@/,'') is last_class_id[last_class_id.length-1]
         if fn_id[0] is '@' and not hasAccessor a.pos, a.end, 'static' # unless static access modifier used
           fn_id = fn_id.substr 1, fn_id.length-1 # remove @ prefix; its only for static
+        last_fn_type_void = fn_type is 'void'
         for ii in [statement.length-1..0]
           s = statement[ii]
           unless statement[ii].types[0] is SYMBOL.COMMENT
