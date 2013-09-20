@@ -668,7 +668,6 @@ class Ast # Parser
         o = []
         beginning = true
         last_had_space = false
-        console.log len: statement.length, start: start, end: end
         for ii in [start..end]
           s = statement[ii]
 
@@ -785,13 +784,13 @@ class Ast # Parser
       #'^access+ class id'
       cursor = 0 # reset
       if (a = match 'oneOrMore', -> @isA 'access') and
-          (c = match 'exactlyOne', -> @chars is 'class') and
-          (match 'exactlyOne', -> @isA 'id')
+          (match 'exactlyOne', -> @chars is 'class') and
+          (i = match 'exactlyOne', -> @isA 'id')
         # remove access modifiers from the statement
+        last_class_id.push i.matches[0].chars
         pluckFromStatement removed = a.matches
         out.classes += "#{indent()}#{toString()} # #{joinTokens removed}\n"
         in_class_scope = true
-        last_class_id.push c.matches[0].chars
         continue
 
       # function definition
@@ -830,14 +829,13 @@ class Ast # Parser
         if fn_params.length then fn_params
         fn_params = if fn_params.length then "(#{fn_params.join ', '}) " else ''
         fn_param_types = unless fn_param_types.length then ['void'] else fn_param_types
-        fn_id = 'constructor' if fn_id is last_class_id[last_class_id.length-1]
+        fn_id = 'constructor' if fn_id.replace(/^@/,'') is last_class_id[last_class_id.length-1]
         if fn_id[0] is '@' and hasAccessor a.pos, a.end, 'static' # if static access modifier used
           fn_id = fn_id.substr 1, fn_id.length-1 # don't use '@' prefix
         for ii in [statement.length-1..0]
           s = statement[ii]
           unless statement[ii].types[0] is SYMBOL.COMMENT
             statement.splice ii, 1 # remove
-        console.log JSON.stringify statement
         out.classes += "#{indent()}#{toString()}#{fn_id}: #{fn_params}-> # #{fn_access_mods.reverse().join ' '} (#{fn_param_types.join ', '}): #{fn_type} #{fn_comment}\n"
         continue
 
